@@ -400,7 +400,7 @@ const ONLINE = PARAMS.has('online');
 const ROOM = PARAMS.get('room') ?? 'main';
 const net = new NetClient();
 let onlineReady = false;
-let lastSeq = -1;
+let lastSeq = -2;
 let inputAcc = 0;
 const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -493,7 +493,7 @@ requestAnimationFrame(frame);
   if (ONLINE) {
     if (onlineReady) {
       // 只在收到新快照时重建世界对象，避免每帧 GC
-      if (net.seq !== lastSeq) {
+      if (net.seq - lastSeq >= 2) {
         lastSeq = net.seq;
         const snap = net.takeSnapshot();
         if (snap) {
