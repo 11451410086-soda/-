@@ -7,8 +7,8 @@ import type { InputSnapshot } from '../src/shared/types';
 import type { ClientMsg, ServerMsg, WorldWire } from './protocol';
 
 const PORT = Number(process.env.PORT ?? 3001);
-const STEP = 1 / 60;
-const SNAPSHOT_HZ = 30;
+const STEP = 1 / 30;
+const SNAPSHOT_HZ = 20;
 
 const emptyInput = (): InputSnapshot => ({
   moveX: 0,
@@ -51,7 +51,7 @@ function createRoom(id: string): Room {
     acc: 0,
     last: Date.now(),
   };
-  const timer = setInterval(() => tickRoom(room), 16);
+  const timer = setInterval(() => tickRoom(room), 33);
   (room as unknown as { timer: NodeJS.Timeout }).timer = timer;
 
   rooms.set(id, room);
@@ -64,7 +64,7 @@ function tickRoom(room: Room): void {
   room.last = now;
   room.acc += dt;
   let guard = 0;
-  while (room.acc >= STEP && guard < 5) {
+  while (room.acc >= STEP && guard < 3) {
     room.world.tick(room.inputs, STEP);
     for (const input of room.inputs) {
       input.firePressed = false;
