@@ -8,7 +8,7 @@ import type { ClientMsg, ServerMsg, WorldWire } from './protocol';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const STEP = 1 / 30;
-const SNAPSHOT_HZ = 20;
+const SNAPSHOT_HZ = 30;
 
 const emptyInput = (): InputSnapshot => ({
   moveX: 0,

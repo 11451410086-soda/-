@@ -4,7 +4,7 @@ import { VIEW } from './content/defs';
 import type { HeroId } from './content/defs';
 import { Camera, Renderer } from './render/renderer';
 import { NetClient } from './net/client';
-import { applySnapshot } from './net/apply';
+import { applySnapshot, smoothWorld } from './net/apply';
 import type { InputSnapshot } from './shared/types';
 import { clamp } from './shared/util';
 import { World } from './sim/world';
@@ -501,6 +501,7 @@ requestAnimationFrame(frame);
           applySnapshot(world, snap);
         }
       }
+      smoothWorld(world, dt);
       // 输入 30Hz 发送即可
       inputAcc += dt;
       if (inputAcc >= 1 / 30) {

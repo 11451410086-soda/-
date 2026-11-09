@@ -3,11 +3,6 @@ import type { WorldWire } from '../../server/protocol';
 import type { Enemy } from '../sim/types';
 
 /** 把服务器快照写进本地世界对象（渲染层直接复用） */
-const SMOOTH = 0.32;
-
-function toward(cur: number, target: number): number {
-  return cur + (target - cur) * SMOOTH;
-}
 
 export function applySnapshot(world: World, wire: WorldWire): void {
   while (world.players.length < wire.players.length) world.addPlayer('railgun');
@@ -15,8 +10,13 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     const p = world.players[idx];
     const pw = wire.players[idx];
     if (!pw) continue;
-    p.pos.x = toward(p.pos.x, pw.x);
-    p.pos.y = toward(p.pos.y, pw.y);
+    (p as unknown as { tx: number; ty: number }).tx = pw.x;
+    (p as unknown as { tx: number; ty: number }).ty = pw.y;
+    if (!(p as unknown as { init?: boolean }).init) {
+      p.pos.x = pw.x;
+      p.pos.y = pw.y;
+      (p as unknown as { init?: boolean }).init = true;
+    }
     p.aim = pw.aim;
     p.hp = pw.hp;
     p.maxHp = pw.maxHp;
@@ -48,9 +48,9 @@ export function applySnapshot(world: World, wire: WorldWire): void {
   world.enemies = wire.enemies.map((e) => ({
     id: e.id,
     kind: e.kind as Enemy['kind'],
-    pos: prevEnemies.has(e.id)
-      ? { x: toward(prevEnemies.get(e.id)!.pos.x, e.x), y: toward(prevEnemies.get(e.id)!.pos.y, e.y) }
-      : { x: e.x, y: e.y },
+    pos: { x: prevEnemies.get(e.id)?.pos.x ?? e.x, y: prevEnemies.get(e.id)?.pos.y ?? e.y },
+    tx: e.x,
+    ty: e.y,
     hp: e.hp,
     maxHp: e.maxHp,
     speed: 0,
@@ -144,5 +144,22 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     c.hp = cw.hp;
     c.maxHp = cw.maxHp;
     c.alive = cw.alive;
+  }
+}
+
+/** 每帧朝目标位置靠拢（不分配新对象，帧率友好） */
+export function smoothWorld(world: World, dt: number): void {
+  const k = Math.min(1, dt * 18);
+  for (const p of world.players) {
+    const t = p as unknown as { tx?: number; ty?: number };
+    if (t.tx === undefined) continue;
+    p.pos.x += (t.tx - p.pos.x) * k;
+    p.pos.y += (t.ty! - p.pos.y) * k;
+  }
+  for (const e of world.enemies) {
+    const t = e as unknown as { tx?: number; ty?: number };
+    if (t.tx === undefined) continue;
+    e.pos.x += (t.tx - e.pos.x) * k;
+    e.pos.y += (t.ty! - e.pos.y) * k;
   }
 }
