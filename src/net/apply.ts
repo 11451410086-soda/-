@@ -148,8 +148,8 @@ export function applySnapshot(world: World, wire: WorldWire): void {
 }
 
 /** 每帧朝目标位置靠拢（不分配新对象，帧率友好） */
-export function smoothWorld(world: World, dt: number): void {
-  const k = Math.min(1, dt * 9);
+export function smoothWorld(world: World, dt: number, interval = 0.033): void {
+  const k = Math.min(1, dt / Math.max(0.016, interval * 1.1));
   for (const p of world.players) {
     const t = p as unknown as { tx?: number; ty?: number };
     if (t.tx === undefined) continue;

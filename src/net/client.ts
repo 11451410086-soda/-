@@ -8,6 +8,9 @@ export class NetClient {
   playerIndex = 0;
   /** 快照序号，只有新快照才需要应用 */
   seq = 0;
+  /** 快照平均间隔（秒），用于插值速度 */
+  interval = 0.033;
+  private lastAt = 0;
 
   connect(url: string): void {
     const ws = new WebSocket(url);
@@ -26,6 +29,12 @@ export class NetClient {
       }
       if (msg.t === 'welcome') this.playerIndex = msg.playerId - 1;
       if (msg.t === 'state') {
+        const now = performance.now();
+        if (this.lastAt > 0) {
+          const d = (now - this.lastAt) / 1000;
+          if (d > 0.005 && d < 0.5) this.interval = this.interval * 0.7 + d * 0.3;
+        }
+        this.lastAt = now;
         this.latest = msg.world;
         this.seq++;
       }

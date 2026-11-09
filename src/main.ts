@@ -518,7 +518,7 @@ requestAnimationFrame(frame);
         me.pos.x += inp.moveX * sp * dt;
         me.pos.y += inp.moveY * sp * dt;
       }
-      smoothWorld(world, dt);
+      smoothWorld(world, dt, net.interval);
       const tA = performance.now();
       // 偏差过大才拉回（小偏差靠平滑吸收）
       {
