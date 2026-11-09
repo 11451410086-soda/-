@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>界域净化</title>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="frame">
+        <div id="skill-tip" class="skill-tip hidden"></div>
+        <canvas id="game" width="480" height="270"></canvas>
+
+        <div id="hud">
+          <div class="hud-top">
+            <div class="card vitals">
+              <div class="line">
+                <span class="tag" id="hero-name">域卫</span>
+                <span id="hp-text" class="num">180 / 180</span>
+              </div>
+              <div class="bar hp"><i id="hp-bar"></i></div>
+              <div class="bar shield hidden" id="shield-wrap"><i id="shield-bar"></i></div>
+              <div class="line ammo-line" id="ammo-line">
+                <span class="tag" id="ammo-label">电磁炮</span>
+                <div id="ammo" class="ammo"></div>
+                <span id="reload-text" class="warn"></span>
+              </div>
+
+              <div class="line stamina-line" id="stamina-line">
+                <span class="tag">体力</span>
+                <div id="stamina" class="ammo stamina"></div>
+              </div>
+              <div class="line" id="form-line" style="display: none">
+                <span class="tag">形态</span>
+                <span id="form-text" class="num">普通</span>
+              </div>
+            </div>
+
+            <div class="card wave">
+              <div id="wave-title" class="wave-title">准备阶段</div>
+              <div id="wave-sub" class="wave-sub">域兽尚未逼近</div>
+          <div id="skip-hint" class="skip-hint">空格 / 点这里 · 提前开战</div>
+            </div>
+
+            <div class="card growth">
+              <div class="line"><span class="tag">域币</span><b id="coins" class="num">0</b></div>
+              <div class="hint">Tab · 成长面板</div>
+            </div>
+          </div>
+
+          <div class="hud-bottom">
+            <div class="hud-left">
+            <div class="key-hints" id="key-hints"></div>
+            <div class="skills">
+              <div class="skill" id="skill-q">
+                <div class="skill-cd" id="cd-q"></div>
+                <span class="key">Q</span>
+                <span class="skill-name" id="skill-q-name">黑洞雷</span>
+              </div>
+              <div class="skill" id="skill-e">
+                <div class="skill-cd" id="cd-e"></div>
+                <span class="key">E</span>
+                <span class="skill-name" id="skill-e-name">陨落</span>
+              </div>
+              <div class="skill" id="skill-f">
+                <div class="skill-cd" id="cd-f"></div>
+                <span class="key">F</span>
+                <span class="skill-name" id="skill-f-name">磐石护体</span>
+              </div>
+              <div class="skill" id="skill-rmb" style="display: none">
+                <div class="skill-cd" id="cd-rmb"></div>
+                <span class="key wide">右键</span>
+                <span class="skill-name">盾击</span>
+              </div>
+            </div>
+            </div>
+
+          </div>
+
+          <div id="toast" class="toast"></div>
+          <div id="center-msg" class="center-msg"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel" class="panel hidden">
+      <div class="panel-inner">
+        <header class="panel-head">
+          <div>
+            <h2>成长面板</h2>
+            <p class="panel-sub">域卫在战斗中领悟的力量，随时可启用。开启面板时无法攻击。</p>
+          </div>
+          <div class="panel-right">
+            <div class="panel-points">域币 <b id="panel-points" class="num">0</b></div>
+            <button id="panel-close" class="btn small">关闭 (Tab)</button>
+          </div>
+        </header>
+        <div id="tracks" class="tracks"></div>
+        <div class="equip-section">
+          <div class="equip-head">
+            <span>武器塑造 · <b id="shape-title">电磁炮</b></span>
+            <span class="equip-coins">域币 <b id="shape-coins" class="num">0</b></span>
+          </div>
+          <div class="equip-list" id="shape-list"></div>
+        </div>
+        <div class="equip-section">
+          <div class="equip-head">
+            <span>技能塑造</span>
+            <span class="equip-coins">域币 <b id="skill-shape-coins" class="num">0</b></span>
+          </div>
+          <div id="skill-shape-list" class="shape-groups"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-title" class="screen">
+      <div class="screen-inner">
+        <div class="logo">界域净化</div>
+        <div class="sub">域外域兽正涌向升华水晶。</div>
+        <div class="lore">
+          界者招募各域强者为「域卫」，在净化之路上阻击域兽，守住净化水晶与升华水晶。
+        </div>
+        <div class="controls">
+          <div><b>WASD</b> 移动</div>
+          <div><b>Shift</b> 翻滚</div>
+          <div><b>Tab</b> 塑 造</div>
+          <div><b>Esc</b> 菜单</div>
+          <div><b>空格</b> 跳过整备</div>
+        </div>
+        <button id="btn-start" class="btn hero-btn"><b>开始游戏</b><span>域卫 · 选择武器</span></button>
+        <button id="btn-codex" class="btn text-btn">图 鉴</button>
+      </div>
+    </div>
+
+    <div id="prep" class="screen hidden">
+      <div class="screen-inner">
+        <div class="logo mini">准备出击</div>
+        <div class="sub">选择武器，进入净化之路。</div>
+        <div class="hero-pick" id="prep-weapon"></div>
+
+        <div class="prep-common">通用操作：<b>WASD</b> 移动 · <b>Shift</b> 翻滚 · <b>Q/E/F</b> 技能 · <b>Tab</b> 塑造 · <b>Esc</b> 菜单</div>
+
+        <div class="prep-skills">
+          <div class="prep-title">技能 · Q / E / F</div>
+          <div class="prep-skill-row" id="prep-skill-list"></div>
+        </div>
+        <button id="btn-deploy" class="btn">出 发</button>
+      </div>
+    </div>
+
+    <div id="codex" class="screen hidden">
+      <div class="codex-inner">
+        <div class="codex-top">
+          <div class="codex-title">图鉴</div>
+          <button id="codex-close" class="btn small">关闭 (Esc)</button>
+        </div>
+        <div id="codex-tabs" class="codex-tabs"></div>
+        <div id="codex-list" class="codex-list"></div>
+      </div>
+    </div>
+
+    <div id="pause" class="screen hidden">
+      <div class="screen-inner">
+        <div class="logo mini">已暂停</div>
+        <div class="pause-btns">
+          <button id="btn-resume" class="btn">继续游戏</button>
+          <button id="btn-quit" class="btn ghost">退出至主菜单</button>
+          <button id="btn-cheat" class="btn ghost cheat">作弊 · +1000 域币</button>
+        </div>
+        <div class="hint-pause">按 Esc 也可继续</div>
+      </div>
+    </div>
+
+    <div id="screen-end" class="screen hidden">
+      <div class="screen-inner">
+        <div id="end-title" class="logo">净化成功</div>
+        <div id="end-sub" class="sub"></div>
+        <div id="end-stats" class="stats"></div>
+        <button id="btn-restart" class="btn">再次净化</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

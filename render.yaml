@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: jieyu-jinghua
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run server
+    envVars:
+      - key: NODE_VERSION
+        value: 22
