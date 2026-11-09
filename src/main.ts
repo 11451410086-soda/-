@@ -4,6 +4,8 @@ import { VIEW } from './content/defs';
 import type { HeroId } from './content/defs';
 import { Camera, Renderer } from './render/renderer';
 import { NetClient } from './net/client';
+import { P2P } from './net/p2p';
+import { serializeWorld } from './net/snapshot';
 import { applySnapshot, smoothWorld } from './net/apply';
 import type { InputSnapshot } from './shared/types';
 import { clamp } from './shared/util';
@@ -444,6 +446,34 @@ const ONLINE = PARAMS.has('online');
 const ROOM = PARAMS.get('room') ?? 'main';
 const net = new NetClient();
 let onlineReady = false;
+const P2P_MODE = PARAMS.has('p2p');
+const P2P_ROLE = (PARAMS.get('role') ?? 'host') as 'host' | 'guest';
+const P2P_ROOM = PARAMS.get('room') ?? 'MAIN';
+const p2p = new P2P({
+  room: P2P_ROOM,
+  role: P2P_ROLE,
+  signalUrl:
+    (location.protocol === 'https:' ? 'wss:' : 'ws:') +
+    '//' + (location.port === '5173' ? location.hostname + ':3001' : location.host) +
+    '/ws?room=' + P2P_ROOM,
+  onOpen: () => {
+    p2pReady = true;
+  },
+  onData: (raw) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.t === 'state') p2pSnap = msg.world;
+      else if (msg.t === 'input') p2pInput = msg.snap;
+    } catch {}
+  },
+  onFail: (r) => {
+    console.warn('[P2P]', r);
+  },
+});
+let p2pReady = false;
+let p2pSnap: unknown = null;
+let p2pInput: InputSnapshot | null = null;
+let p2pSendAcc = 0;
 let lastSeq = -2;
 const SHOW_FPS = PARAMS.has('fps');
 const fpsEl = document.getElementById('fps');
@@ -543,7 +573,28 @@ requestAnimationFrame(frame);
   if (!world) return;
 
   const t0 = performance.now();
-  if (ONLINE) {
+  if (P2P_MODE) {
+    const inp = BOT ? buildBotInput(world, false) : buildInput(true);
+    if (P2P_ROLE === 'host') {
+      if (world.state === 'playing' && !paused) {
+        acc += dt;
+        while (acc >= STEP) {
+          world.tick(inp, STEP);
+          acc -= STEP;
+        }
+      }
+      if (p2pReady) {
+        p2pSendAcc += dt;
+        if (p2pSendAcc >= 1 / 30) {
+          p2pSendAcc = 0;
+          p2p.sendData({ t: 'state', world: serializeWorld(world) });
+        }
+      }
+    } else {
+      if (p2pSnap) applySnapshot(world, p2pSnap as never);
+      p2p.sendData({ t: 'input', snap: inp });
+    }
+  } else if (ONLINE) {
     if (onlineReady) {
       // 只在收到新快照时重建世界对象，避免每帧 GC
       if (net.seq - lastSeq >= 2) {
