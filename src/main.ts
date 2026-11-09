@@ -501,7 +501,27 @@ requestAnimationFrame(frame);
           applySnapshot(world, snap);
         }
       }
+      // 本地预测：自己的角色立刻按输入移动，不等服务器
+      const me = world.player;
+      const inp = BOT ? buildBotInput(world, false) : buildInput(true);
+      if (me.alive && !me.panelOpen) {
+        const sp = 88;
+        me.pos.x += inp.moveX * sp * dt;
+        me.pos.y += inp.moveY * sp * dt;
+      }
       smoothWorld(world, dt);
+      // 偏差过大才拉回（小偏差靠平滑吸收）
+      {
+        const t = me as unknown as { tx?: number; ty?: number };
+        if (t.tx !== undefined) {
+          const dx = t.tx - me.pos.x;
+          const dy = (t.ty ?? 0) - me.pos.y;
+          if (dx * dx + dy * dy > 60 * 60) {
+            me.pos.x = t.tx;
+            me.pos.y = t.ty!;
+          }
+        }
+      }
       // 输入 30Hz 发送即可
       inputAcc += dt;
       if (inputAcc >= 1 / 30) {
