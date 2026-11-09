@@ -400,6 +400,8 @@ const ONLINE = PARAMS.has('online');
 const ROOM = PARAMS.get('room') ?? 'main';
 const net = new NetClient();
 let onlineReady = false;
+let lastSeq = -1;
+let inputAcc = 0;
 const DEBUG = new URLSearchParams(location.search).has('debug');
 
 let debugEl: HTMLElement | null = null;
@@ -490,12 +492,21 @@ requestAnimationFrame(frame);
 
   if (ONLINE) {
     if (onlineReady) {
-      const snap = net.takeSnapshot();
-      if (snap) {
-        world.localIndex = net.playerIndex;
-        applySnapshot(world, snap);
+      // 只在收到新快照时重建世界对象，避免每帧 GC
+      if (net.seq !== lastSeq) {
+        lastSeq = net.seq;
+        const snap = net.takeSnapshot();
+        if (snap) {
+          world.localIndex = net.playerIndex;
+          applySnapshot(world, snap);
+        }
       }
-      net.sendInput(BOT ? buildBotInput(world, false) : buildInput(true));
+      // 输入 30Hz 发送即可
+      inputAcc += dt;
+      if (inputAcc >= 1 / 30) {
+        inputAcc = 0;
+        net.sendInput(BOT ? buildBotInput(world, false) : buildInput(true));
+      }
     }
   } else if (world.state === 'playing' && !paused) {
     acc += dt;
