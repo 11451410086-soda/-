@@ -3,6 +3,10 @@ export type ClientMsg =
   | { t: 'join'; name: string }
   | { t: 'input'; snap: InputSnapshotWire }
   | { t: 'buy'; kind: 'weapon' | 'skill'; id: string; skillId?: string }
+  | { t: 'p2p-join'; room: string }
+  | { t: 'p2p-offer'; room: string; sdp: string }
+  | { t: 'p2p-answer'; room: string; sdp: string }
+  | { t: 'p2p-ice'; room: string; cand: RTCIceCandidateInit; to: 'host' | 'guest' }
   | { t: 'ping'; at: number };
 
 export interface InputSnapshotWire {

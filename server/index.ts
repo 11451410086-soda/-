@@ -40,6 +40,8 @@ interface Room {
 const MAX_PLAYERS = 2;
 
 const rooms = new Map<string, Room>();
+/** P2P 信令房间 */
+const signalRooms = new Map<string, Set<WebSocket>>();
 
 function createRoom(id: string): Room {
   const world = new World('guard', 'railgun');
@@ -240,6 +242,22 @@ wss.on('connection', (ws, req) => {
       const welcome: ServerMsg = { t: 'welcome', playerId: slot + 1 };
       console.log('[server] 房间', roomKey, '玩家', slot + 1, '加入（当前', room.clients.size, '人）');
       ws.send(JSON.stringify(welcome));
+      return;
+    }
+
+    // —— P2P 信令：仅转发，不参与游戏逻辑 ——
+    if (msg.t === 'p2p-join' || msg.t === 'p2p-offer' || msg.t === 'p2p-answer' || msg.t === 'p2p-ice') {
+      const key = String((msg as { room?: string }).room ?? 'main');
+      let peers = signalRooms.get(key);
+      if (!peers) {
+        peers = new Set();
+        signalRooms.set(key, peers);
+      }
+      if (msg.t === 'p2p-join') peers.add(ws);
+      const payload = JSON.stringify(msg);
+      for (const c of peers) {
+        if (c !== ws && c.readyState === WebSocket.OPEN) c.send(payload);
+      }
       return;
     }
 
