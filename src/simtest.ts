@@ -322,7 +322,7 @@ const input = {
   const w2 = makeWorld();
   w2.player.coins = 500;
   w2.buySkillShape("blackhole", "detonate");
-  w2.zones.push({ id: 1, pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+  w2.zones.push({ id: 1, owner: "player", pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
   w2.spawnEnemy("puze", { x: 470, y: 150 });
   const hp2 = w2.enemies[0].hp;
   w2.fireRail(0);
@@ -333,7 +333,7 @@ const input = {
   const w3 = makeWorld();
   w3.player.coins = 500;
   w3.buySkillShape("blackhole", "detonate");
-  w3.zones.push({ id: 1, pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+  w3.zones.push({ id: 1, owner: "player", pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
   w3.fireRail(0);
   let maxX = 0;
   for (let i = 0; i < 30; i++) {
@@ -347,7 +347,7 @@ const input = {
   w4.player.coins = 500;
   w4.buySkillShape("blackhole", "overflow");
   w4.player.pos = { x: 520, y: 150 };
-  w4.zones.push({ id: 1, pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+  w4.zones.push({ id: 1, owner: "player", pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
   w4.updateZones(0.05);
   check("引力超标：站进范围获得增益", w4.player.zoneBuffT > 0);
 
@@ -355,7 +355,7 @@ const input = {
   const w5 = makeWorld();
   w5.player.coins = 500;
   w5.buySkillShape("blackhole", "slowfield");
-  w5.zones.push({ id: 1, pos: { x: 500, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+  w5.zones.push({ id: 1, owner: "player", pos: { x: 500, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
   w5.shots.push({ tag: "flight", pos: { x: 495, y: 150 }, vel: { x: 200, y: 0 }, radius: 4, dmg: 5, life: 2 });
   const sx = w5.shots[0].pos.x;
   w5.updateShots(0.1);

@@ -1559,3 +1559,36 @@ body {
 .lobby-code { font:14px monospace; color:#7fd8ff; letter-spacing:0.2em; }
 .lobby-input { flex:1; padding:8px 12px; border-radius:6px; border:1px solid rgba(95,215,255,.25); background:rgba(10,20,32,.8); color:#dff1ff; font:14px monospace; }
 .lobby-tip { margin-top:10px; font-size:12px; color:#6f8ba6; }
+
+/* ---------- 联机状态 ---------- */
+
+.net-status {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 130;
+  padding: 5px 14px;
+  border-radius: 999px;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+  background: rgba(8, 14, 22, 0.82);
+  border: 1px solid rgba(120, 220, 180, 0.3);
+  color: #9fe6c6;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.net-status.good {
+  color: #8ce8a8;
+  border-color: rgba(120, 232, 168, 0.5);
+}
+
+.net-status.bad {
+  color: #ff9d8a;
+  border-color: rgba(255, 157, 138, 0.5);
+}
+
+.net-status.hidden {
+  display: none;
+}

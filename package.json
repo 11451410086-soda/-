@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
+    "selftest": "tsx scripts/simtest.ts",
     "dev:lan": "vite --host 0.0.0.0",
     "serve": "vite preview --host 0.0.0.0 --port 4173",
     "server": "tsx server/index.ts",

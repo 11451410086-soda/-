@@ -8,6 +8,7 @@ import { P2P } from './net/p2p';
 import { serializeWorld } from './net/snapshot';
 import { applySnapshot, smoothWorld } from './net/apply';
 import type { InputSnapshot } from './shared/types';
+import type { WorldWire } from '../server/protocol';
 import { clamp } from './shared/util';
 import { World } from './sim/world';
 import { Hud } from './ui/hud';
@@ -64,7 +65,7 @@ document.getElementById("lobby-create")!.addEventListener("click", () => {
   roomCode = Math.random().toString(36).slice(2, 6).toUpperCase();
   lobbyCodeEl.textContent = roomCode;
   lobbyCopy.classList.remove("hidden");
-  lobbyTip.textContent = "房间已创建，复制链接发给朋友，然后点「出发」";
+  lobbyTip.textContent = "房间已创建 · 复制链接发给朋友，关闭此窗口后点「开始游戏 → 出发」";
 });
 lobbyCopy.addEventListener("click", () => {
   if (!roomCode) return;
@@ -231,6 +232,21 @@ function setPaused(v: boolean): void {
 document.getElementById('btn-resume')!.addEventListener('click', () => setPaused(false));
 document.getElementById('btn-quit')!.addEventListener('click', () => {
   setPaused(false);
+  // 退出即断联：否则客人会继续收到快照、又被拉回战场
+  if (p2p) {
+    p2p.close();
+    p2p = null;
+    p2pReady = false;
+    p2pSnap = null;
+    p2pInput = null;
+  }
+  if (p2pMode && p2pRole === 'guest') {
+    hideGuestWait();
+    screenTitle.classList.remove('hidden');
+  }
+  // 退出联机后回到单机语义，避免再开局时卡在「客人只渲染不推进」的分支
+  p2pMode = false;
+  p2pRole = 'host';
   world = null;
   ended = false;
   acc = 0;
@@ -388,6 +404,7 @@ function startGame(heroId: HeroId = 'guard'): void {
   mouse.right = false;
   acc = 0;
   lastTime = performance.now();
+  if (p2pReady && p2pRole === 'host') ensureHostPlayers();
 }
 
 function showEnd(w: World): void {
@@ -417,9 +434,14 @@ document.getElementById('btn-deploy')!.addEventListener('click', () => {
   prepScreen.classList.add('hidden');
   lastHero = 'guard';
   startGame(lastHero);
+  // 在房间弹窗里创建过房间：出发即开联机，等朋友进来
+  if (roomCode) startP2P(roomCode, 'host');
 });
 document.getElementById('btn-codex')!.addEventListener('click', () => codex.show());
-document.getElementById('btn-restart')!.addEventListener('click', () => startGame(lastHero));
+document.getElementById('btn-restart')!.addEventListener('click', () => {
+  if (p2pRole === 'guest' && p2pMode) return;
+  startGame(lastHero);
+});
 document.getElementById('btn-cheat')!.addEventListener('click', () => {
   if (!world) return;
   world.player.coins += 1000;
@@ -446,35 +468,211 @@ const ONLINE = PARAMS.has('online');
 const ROOM = PARAMS.get('room') ?? 'main';
 const net = new NetClient();
 let onlineReady = false;
-const P2P_MODE = PARAMS.has('p2p');
-const P2P_ROLE = (PARAMS.get('role') ?? 'host') as 'host' | 'guest';
-const P2P_ROOM = PARAMS.get('room') ?? 'MAIN';
-const p2p = new P2P({
-  room: P2P_ROOM,
-  role: P2P_ROLE,
-  signalUrl:
-    (location.protocol === 'https:' ? 'wss:' : 'ws:') +
-    '//' + (location.port === '5173' ? location.hostname + ':3001' : location.host) +
-    '/ws?room=' + P2P_ROOM,
-  onOpen: () => {
-    p2pReady = true;
-  },
-  onData: (raw) => {
-    try {
-      const msg = JSON.parse(raw);
-      if (msg.t === 'state') p2pSnap = msg.world;
-      else if (msg.t === 'input') p2pInput = msg.snap;
-    } catch {}
-  },
-  onFail: (r) => {
-    console.warn('[P2P]', r);
-  },
-});
+let p2pMode = PARAMS.has('p2p');
+let p2pRole: 'host' | 'guest' = PARAMS.get('role') === 'guest' ? 'guest' : 'host';
+let p2pRoom = (PARAMS.get('room') ?? '').toUpperCase();
+let p2p: P2P | null = null;
 let p2pReady = false;
-let p2pSnap: unknown = null;
+let p2pSnap: WorldWire | null = null;
 let p2pInput: InputSnapshot | null = null;
 let p2pSendAcc = 0;
+let stateSent = 0;
 let lastSeq = -2;
+
+/* ---------------- 联机状态 ---------------- */
+
+const netStatusEl = document.createElement('div');
+netStatusEl.id = 'net-status';
+netStatusEl.className = 'net-status';
+document.body.appendChild(netStatusEl);
+
+function setNetStatus(text: string | null, kind: 'info' | 'good' | 'bad' = 'info'): void {
+  if (!text) {
+    netStatusEl.classList.add('hidden');
+    return;
+  }
+  netStatusEl.textContent = text;
+  netStatusEl.className = 'net-status ' + kind;
+}
+
+let guestWaitEl: HTMLElement | null = null;
+
+function showGuestWait(): void {
+  if (guestWaitEl) return;
+  const el = document.createElement('div');
+  el.className = 'screen';
+  el.innerHTML =
+    '<div class="screen-inner">' +
+    '<div class="logo mini">正在连接房主</div>' +
+    '<div class="sub">房间 ' + (p2pRoom || '—') + '</div>' +
+    '<div class="sub" style="opacity:.55;font-size:13px;margin-top:10px">保持此页面打开，房主出发后会自动进入战场</div>' +
+    '</div>';
+  document.body.appendChild(el);
+  guestWaitEl = el;
+}
+
+function hideGuestWait(): void {
+  guestWaitEl?.remove();
+  guestWaitEl = null;
+}
+
+const EMPTY_INPUT: InputSnapshot = {
+  moveX: 0,
+  moveY: 0,
+  aimX: 0,
+  aimY: 0,
+  fireHeld: false,
+  firePressed: false,
+  altHeld: false,
+  altPressed: false,
+  reloadPressed: false,
+  rollPressed: false,
+  skillQ: false,
+  skillE: false,
+  skillF: false,
+  panel: false,
+  skip: false,
+};
+
+/** 边沿标记用掉就清掉，避免同一帧的多次 tick 重复触发 */
+function clearInputEdges(i: InputSnapshot): void {
+  i.firePressed = false;
+  i.altPressed = false;
+  i.reloadPressed = false;
+  i.rollPressed = false;
+  i.skillQ = false;
+  i.skillE = false;
+  i.skillF = false;
+  i.panel = false;
+  i.skip = false;
+}
+
+/** 客人的输入可能比房主的 tick 更密：连续量用最新的，边沿要累积到被消费为止 */
+function mergeInput(prev: InputSnapshot | null, next: InputSnapshot): InputSnapshot {
+  if (!prev) return { ...next };
+  prev.moveX = next.moveX;
+  prev.moveY = next.moveY;
+  prev.aimX = next.aimX;
+  prev.aimY = next.aimY;
+  prev.fireHeld = next.fireHeld;
+  prev.altHeld = next.altHeld;
+  prev.firePressed = prev.firePressed || next.firePressed;
+  prev.altPressed = prev.altPressed || next.altPressed;
+  prev.reloadPressed = prev.reloadPressed || next.reloadPressed;
+  prev.rollPressed = prev.rollPressed || next.rollPressed;
+  prev.skillQ = prev.skillQ || next.skillQ;
+  prev.skillE = prev.skillE || next.skillE;
+  prev.skillF = prev.skillF || next.skillF;
+  prev.panel = prev.panel || next.panel;
+  prev.skip = prev.skip || next.skip;
+  return prev;
+}
+
+function signalUrl(): string {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  // 开发模式（vite 5173）连独立的 3001；部署后同源
+  const host = location.port === '5173' ? location.hostname + ':3001' : location.host;
+  return proto + '//' + host + '/ws?room=' + p2pRoom;
+}
+
+function startP2P(room: string, role: 'host' | 'guest'): void {
+  if (p2p) return;
+  p2pMode = true;
+  p2pRole = role;
+  p2pRoom = room.trim().toUpperCase();
+  let stateLogged = false;
+  p2p = new P2P({
+    room: p2pRoom,
+    role,
+    signalUrl: signalUrl(),
+    debug: DEBUG,
+    onOpen: () => {
+      p2pReady = true;
+      if (DEBUG) console.log('[net] open', role);
+      setNetStatus(role === 'host' ? '朋友已连接' : '已连接房主', 'good');
+      window.setTimeout(() => {
+        if (p2pReady) setNetStatus(null);
+      }, 3200);
+      if (role === 'host') ensureHostPlayers();
+    },
+    onData: (raw) => {
+      try {
+        const msg = JSON.parse(raw) as { t?: string; world?: WorldWire; snap?: InputSnapshot };
+        if (!stateLogged && DEBUG) {
+          stateLogged = true;
+          console.log('[net] 首包', msg.t, 'world?', !!msg.world);
+        }
+        if (msg.t === 'state' && msg.world) {
+          p2pSnap = msg.world;
+          // 客人收到第一帧快照才建世界，避免空跑
+          if (p2pRole === 'guest' && !world) enterGuestWorld();
+        } else if (msg.t === 'input' && msg.snap) {
+          p2pInput = mergeInput(p2pInput, msg.snap);
+        }
+      } catch {
+        /* 坏包直接丢 */
+      }
+    },
+    onFail: (r) => {
+      p2pInput = null;
+      setNetStatus('联机失败：' + r, 'bad');
+    },
+    onStatus: (st, detail) => {
+      if (st === 'connected') return;
+      setNetStatus(detail ?? '连接中…', st === 'failed' ? 'bad' : 'info');
+    },
+  });
+  p2p.start();
+}
+
+/** 房主页面切到后台时浏览器会暂停 rAF，世界就冻住了 —— 明确提示，别让人以为卡死 */
+document.addEventListener('visibilitychange', () => {
+  if (!p2pMode || p2pRole !== 'host') return;
+  if (document.hidden) {
+    setNetStatus('房主页面已切到后台 → 世界暂停，请切回本页', 'bad');
+  } else if (p2pReady) {
+    setNetStatus('已回到前台，继续净化', 'good');
+    window.setTimeout(() => {
+      if (!document.hidden) setNetStatus(null);
+    }, 2200);
+  }
+});
+
+/** 房主世界里给客人留一个玩家位（联机前不占位） */
+function ensureHostPlayers(): void {
+  if (!world || p2pRole !== 'host') return;
+  while (world.players.length < 2) world.addPlayer('railgun');
+}
+
+/** 客人收到第一帧快照：以房主世界为准，本地只做插值渲染 */
+function enterGuestWorld(): void {
+  if (world) return;
+  world = new World('guard', 'railgun');
+  world.localIndex = 1;
+  ended = false;
+  panelWasOpen = false;
+  panelSig = '';
+  panel.hide();
+  hud.reset();
+  renderer.particles.length = 0;
+  renderer.numbers.length = 0;
+  renderer.rings.length = 0;
+  screenTitle.classList.add('hidden');
+  prepScreen.classList.add('hidden');
+  screenEnd.classList.add('hidden');
+  hudEl.classList.add('on');
+  setPaused(false);
+  if (p2pSnap) applySnapshot(world, p2pSnap);
+  camera.update(world.player.pos, 0, true);
+  hideGuestWait();
+  keys.clear();
+  clearEdges();
+  mouse.left = false;
+  mouse.right = false;
+  acc = 0;
+  lastTime = performance.now();
+  setNetStatus(null);
+}
 const SHOW_FPS = PARAMS.has('fps');
 const fpsEl = document.getElementById('fps');
 if (SHOW_FPS && fpsEl) fpsEl.style.display = 'block';
@@ -573,26 +771,55 @@ requestAnimationFrame(frame);
   if (!world) return;
 
   const t0 = performance.now();
-  if (P2P_MODE) {
-    const inp = BOT ? buildBotInput(world, false) : buildInput(true);
-    if (P2P_ROLE === 'host') {
+  if (p2pMode) {
+    if (p2pRole === 'host') {
+      const inp = BOT ? buildBotInput(world, false) : buildInput(true);
       if (world.state === 'playing' && !paused) {
         acc += dt;
-        while (acc >= STEP) {
-          world.tick(inp, STEP);
+        let guard = 0;
+        while (acc >= STEP && guard < 5) {
+          // 房主权威：自己的输入 + 客人最新输入，一起推进世界
+          const guestInp = p2pInput ?? EMPTY_INPUT;
+          if (DEBUG && (guestInp.skillQ || guestInp.skillE || guestInp.firePressed)) {
+            console.log('[net] 客人边沿', guestInp.skillQ ? 'Q' : guestInp.skillE ? 'E' : 'fire');
+          }
+          world.tick([inp, guestInp], STEP);
+          clearInputEdges(guestInp);
           acc -= STEP;
+          guard++;
         }
       }
-      if (p2pReady) {
+      if (p2p && p2pReady) {
         p2pSendAcc += dt;
         if (p2pSendAcc >= 1 / 30) {
           p2pSendAcc = 0;
-          p2p.sendData({ t: 'state', world: serializeWorld(world) });
+          p2p.sendState({ t: 'state', world: serializeWorld(world) });
+          if (DEBUG && stateSent < 3) {
+            stateSent++;
+            console.log('[net] 发快照', stateSent);
+          }
         }
       }
     } else {
-      if (p2pSnap) applySnapshot(world, p2pSnap as never);
-      p2p.sendData({ t: 'input', snap: inp });
+      if (edges.panel) hud.toast('联机中暂未开放成长面板');
+      // 不要在这里清边沿：只有真正发出去的那一刻才清，
+      // 否则 60fps 下按在「不发送」的那一帧会被吞掉。
+      const inp = buildInput(false);
+      if (p2pSnap) applySnapshot(world, p2pSnap);
+      if (p2p && p2pReady) {
+        p2pSendAcc += dt;
+        if (p2pSendAcc >= 1 / 30) {
+          p2pSendAcc = 0;
+          if (DEBUG && (inp.firePressed || inp.skillQ || inp.rollPressed)) {
+            console.log('[net] 客人发出边沿', inp.firePressed ? 'fire' : inp.skillQ ? 'Q' : 'roll');
+          }
+          p2p.sendInput({ t: 'input', snap: { ...inp, panel: false } });
+          // 清的是按键边沿表（edges），不是快照；否则技能键会被持续发送
+          clearEdges();
+        }
+      }
+      // 客人不跑模拟：只按房主快照插值
+      smoothWorld(world, dt, 1 / 30);
     }
   } else if (ONLINE) {
     if (onlineReady) {
@@ -666,7 +893,8 @@ requestAnimationFrame(frame);
     debugEl.textContent = `player ${world.player.pos.x.toFixed(0)},${world.player.pos.y.toFixed(0)}  hp ${world.player.hp.toFixed(0)}
 camera ${camera.x.toFixed(0)},${camera.y.toFixed(0)}
 enemies ${world.enemies.length}  wave ${world.wave.n}  pts ${world.player.points}
-zoom ${document.documentElement.style.getPropertyValue('--s')}`;
+zoom ${document.documentElement.style.getPropertyValue('--s')}
+vis ${document.visibilityState}  focus ${document.hasFocus()}  net ${p2pReady ? 'on' : 'off'}`;
   }
 
   if (SHOW_FPS && fpsEl) {
@@ -705,6 +933,17 @@ if (ONLINE) {
       clearInterval(tick);
     }
   }, 200);
+}
+
+if (p2pMode) {
+  if (p2pRole === 'guest') {
+    // 客人：直接等房主，别让「开始游戏」开出单机世界
+    screenTitle.classList.add('hidden');
+    showGuestWait();
+    startP2P(p2pRoom || 'MAIN', 'guest');
+  } else {
+    startP2P(p2pRoom || 'MAIN', 'host');
+  }
 }
 
 requestAnimationFrame(frame);
