@@ -64,6 +64,10 @@ const CYAN = 'rgba(120, 230, 255, 1)';
 const PURPLE = 'rgba(180, 120, 255, 1)';
 const ORANGE = 'rgba(255, 176, 90, 1)';
 
+const LOW_QUALITY = typeof location !== 'undefined' && new URLSearchParams(location.search).has('low');
+
+export const renderStats = { low: LOW_QUALITY };
+
 export class Renderer {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -606,13 +610,13 @@ export class Renderer {
       ctx.fill();
     }
 
-    this.drawParticles(ctx, dt);
+    if (!LOW_QUALITY) this.drawParticles(ctx, dt);
     this.drawAim(ctx, world, input, t);
 
     ctx.restore();
 
     // 屏幕层
-    ctx.drawImage(this.vignette, 0, 0);
+    if (!LOW_QUALITY) ctx.drawImage(this.vignette, 0, 0);
     this.drawMinimap(ctx, world, cam);
 
     const p = world.player;
