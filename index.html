@@ -130,6 +130,7 @@
         </div>
         <button id="btn-start" class="btn hero-btn"><b>开始游戏</b><span>域卫 · 选择武器</span></button>
         <button id="btn-codex" class="btn text-btn">图 鉴</button>
+        <button id="btn-online" class="btn text-btn">联 机</button>
       </div>
     </div>
 
@@ -146,6 +147,25 @@
           <div class="prep-skill-row" id="prep-skill-list"></div>
         </div>
         <button id="btn-deploy" class="btn">出 发</button>
+      </div>
+    </div>
+
+    <div id="lobby" class="screen hidden">
+      <div class="codex-inner">
+        <div class="codex-top">
+          <div class="codex-title">联机</div>
+          <button id="lobby-close" class="btn small">关闭 (Esc)</button>
+        </div>
+        <div class="lobby-sec">
+          <button id="lobby-create" class="btn">创建房间</button>
+          <span id="lobby-code" class="lobby-code"></span>
+          <button id="lobby-copy" class="btn small hidden">复制链接</button>
+        </div>
+        <div class="lobby-sec">
+          <input id="lobby-input" class="lobby-input" maxlength="8" placeholder="输入房间号" />
+          <button id="lobby-join" class="btn small">加入</button>
+        </div>
+        <div id="lobby-tip" class="lobby-tip">创建一个房间，把链接发给朋友即可</div>
       </div>
     </div>
 

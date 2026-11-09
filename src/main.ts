@@ -39,6 +39,46 @@ let panelWasOpen = false;
 let panelSig = '';
 
 const codex = new Codex();
+
+/* ---------------- 联机房间 ---------------- */
+const lobby = document.getElementById("lobby") as HTMLElement;
+const lobbyCodeEl = document.getElementById("lobby-code") as HTMLElement;
+const lobbyInput = document.getElementById("lobby-input") as HTMLInputElement;
+const lobbyTip = document.getElementById("lobby-tip") as HTMLElement;
+const lobbyCopy = document.getElementById("lobby-copy") as HTMLElement;
+let roomCode = "";
+
+function onlineUrl(code: string, role: "host" | "guest"): string {
+  const base = location.origin + location.pathname;
+  return base + "?p2p=1&room=" + code + "&role=" + role;
+}
+
+document.getElementById("btn-online")!.addEventListener("click", () => {
+  lobby.classList.remove("hidden");
+  lobbyTip.textContent = "创建一个房间，把链接发给朋友即可";
+});
+document.getElementById("lobby-close")!.addEventListener("click", () => lobby.classList.add("hidden"));
+document.getElementById("lobby-create")!.addEventListener("click", () => {
+  roomCode = Math.random().toString(36).slice(2, 6).toUpperCase();
+  lobbyCodeEl.textContent = roomCode;
+  lobbyCopy.classList.remove("hidden");
+  lobbyTip.textContent = "房间已创建，复制链接发给朋友，然后点「出发」";
+});
+lobbyCopy.addEventListener("click", () => {
+  if (!roomCode) return;
+  const url = onlineUrl(roomCode, "guest");
+  void navigator.clipboard?.writeText(url);
+  lobbyTip.textContent = "已复制：" + url;
+});
+document.getElementById("lobby-join")!.addEventListener("click", () => {
+  const code = lobbyInput.value.trim().toUpperCase();
+  if (code.length < 3) {
+    lobbyTip.textContent = "房间号太短";
+    return;
+  }
+  location.href = onlineUrl(code, "guest");
+});
+
 const panel = new GrowthPanel(() => {
   if (world) world.player.panelOpen = false;
   panel.hide();
@@ -86,6 +126,10 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (k === 'escape') {
+    if (!lobby.classList.contains("hidden")) {
+      lobby.classList.add("hidden");
+      return;
+    }
     if (codex.isOpen()) {
       codex.hide();
       return;
