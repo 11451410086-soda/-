@@ -3,14 +3,20 @@ import type { WorldWire } from '../../server/protocol';
 import type { Enemy } from '../sim/types';
 
 /** 把服务器快照写进本地世界对象（渲染层直接复用） */
+const SMOOTH = 0.32;
+
+function toward(cur: number, target: number): number {
+  return cur + (target - cur) * SMOOTH;
+}
+
 export function applySnapshot(world: World, wire: WorldWire): void {
   while (world.players.length < wire.players.length) world.addPlayer('railgun');
   for (let idx = 0; idx < wire.players.length; idx++) {
     const p = world.players[idx];
     const pw = wire.players[idx];
     if (!pw) continue;
-    p.pos.x = pw.x;
-    p.pos.y = pw.y;
+    p.pos.x = toward(p.pos.x, pw.x);
+    p.pos.y = toward(p.pos.y, pw.y);
     p.aim = pw.aim;
     p.hp = pw.hp;
     p.maxHp = pw.maxHp;
@@ -38,10 +44,13 @@ export function applySnapshot(world: World, wire: WorldWire): void {
   world.wave.phase = wire.wave.phase as typeof world.wave.phase;
   world.wave.timer = wire.wave.timer;
 
+  const prevEnemies = new Map(world.enemies.map((e) => [e.id, e]));
   world.enemies = wire.enemies.map((e) => ({
     id: e.id,
     kind: e.kind as Enemy['kind'],
-    pos: { x: e.x, y: e.y },
+    pos: prevEnemies.has(e.id)
+      ? { x: toward(prevEnemies.get(e.id)!.pos.x, e.x), y: toward(prevEnemies.get(e.id)!.pos.y, e.y) }
+      : { x: e.x, y: e.y },
     hp: e.hp,
     maxHp: e.maxHp,
     speed: 0,
