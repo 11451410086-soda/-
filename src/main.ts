@@ -401,6 +401,14 @@ const ROOM = PARAMS.get('room') ?? 'main';
 const net = new NetClient();
 let onlineReady = false;
 let lastSeq = -2;
+const SHOW_FPS = PARAMS.has('fps');
+const fpsEl = document.getElementById('fps');
+if (SHOW_FPS && fpsEl) fpsEl.style.display = 'block';
+let fpsFrames = 0;
+let fpsTime = 0;
+let tApply = 0;
+let tDraw = 0;
+let tHud = 0;
 let inputAcc = 0;
 const DEBUG = new URLSearchParams(location.search).has('debug');
 
@@ -490,6 +498,7 @@ requestAnimationFrame(frame);
 
   if (!world) return;
 
+  const t0 = performance.now();
   if (ONLINE) {
     if (onlineReady) {
       // 只在收到新快照时重建世界对象，避免每帧 GC
@@ -510,6 +519,7 @@ requestAnimationFrame(frame);
         me.pos.y += inp.moveY * sp * dt;
       }
       smoothWorld(world, dt);
+      const tA = performance.now();
       // 偏差过大才拉回（小偏差靠平滑吸收）
       {
         const t = me as unknown as { tx?: number; ty?: number };
@@ -549,8 +559,12 @@ requestAnimationFrame(frame);
     hud.handleEvents(evs);
   }
 
+  const tD0 = performance.now();
   renderer.draw(world, camera, BOT ? buildBotInput(world, false) : buildInput(false), dt);
+  const tD1 = performance.now();
+  const tH0 = performance.now();
   hud.update(world, dt);
+  const tH1 = performance.now();
   syncPanel();
 
   if (debugEl) {
@@ -558,6 +572,27 @@ requestAnimationFrame(frame);
 camera ${camera.x.toFixed(0)},${camera.y.toFixed(0)}
 enemies ${world.enemies.length}  wave ${world.wave.n}  pts ${world.player.points}
 zoom ${document.documentElement.style.getPropertyValue('--s')}`;
+  }
+
+  if (SHOW_FPS && fpsEl) {
+    fpsFrames++;
+    fpsTime += dt;
+    tApply += tD1 - tD0;
+    tDraw += tD1 - tD0;
+    tHud += tH1 - tH0;
+    if (fpsTime >= 0.5) {
+      const fps = fpsFrames / fpsTime;
+      fpsEl.textContent =
+        'FPS ' + fps.toFixed(0) +
+        '  draw ' + ((tDraw / fpsFrames) * 1).toFixed(1) + 'ms' +
+        '  hud ' + ((tHud / fpsFrames) * 1).toFixed(1) + 'ms' +
+        '  online ' + (ONLINE ? 'yes' : 'no');
+      fpsFrames = 0;
+      fpsTime = 0;
+      tApply = 0;
+      tDraw = 0;
+      tHud = 0;
+    }
   }
 
   if (world.state !== 'playing') showEnd(world);
