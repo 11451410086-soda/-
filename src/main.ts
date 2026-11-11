@@ -687,6 +687,12 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
         if (msg.t === 'state' && msg.world) {
           p2pSnap = msg.world;
           snapCount++;
+          const nowMs = performance.now();
+          if (lastSnapAt > 0) {
+            const gap = (nowMs - lastSnapAt) / 1000;
+            if (gap > 0.005 && gap < 1) snapInterval += (gap - snapInterval) * 0.2;
+          }
+          lastSnapAt = nowMs;
           if (DEBUG && msg.world.events && msg.world.events.length > 0) {
             console.log('[net] 收到事件', msg.world.events.length);
           }
@@ -995,6 +1001,9 @@ if (SHOW_FPS && fpsEl) fpsEl.style.display = 'block';
 let fpsFrames = 0;
 let fpsTime = 0;
 let snapCount = 0;
+/** 实测快照间隔（秒），客人插值用；房主卡的时候它会变大，平滑跟着放慢，避免橡皮筋 */
+let snapInterval = 1 / 30;
+let lastSnapAt = 0;
 let tApply = 0;
 let tDraw = 0;
 let tHud = 0;
@@ -1165,8 +1174,8 @@ function frame(now: number): void {
           clearEdges();
         }
       }
-      // 客人不跑模拟：只按房主快照插值
-      smoothWorld(world, dt, 1 / 30);
+      // 客人不跑模拟：只按房主快照插值（用实测间隔，房主掉帧时不会一顿一顿地追）
+      smoothWorld(world, dt, snapInterval);
     }
   } else if (ONLINE) {
     if (onlineReady) {
