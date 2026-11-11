@@ -15,7 +15,7 @@ import { Hud } from './ui/hud';
 import { Codex } from './ui/codex';
 import { GrowthPanel } from './ui/panel';
 import { CoopLobby } from './ui/coop';
-import type { LobbyCard, LobbyWeapon } from './ui/coop';
+import type { LobbyCard, LobbyPhase, LobbyWeapon } from './ui/coop';
 
 window.addEventListener('error', (e) => {
   console.error('BOOT ERROR:', e.message, '@', e.filename, e.lineno, e.colno);
@@ -75,7 +75,10 @@ document.getElementById("lobby-create")!.addEventListener("click", () => {
   roomCode = Math.random().toString(36).slice(2, 6).toUpperCase();
   lobbyCodeEl.textContent = roomCode;
   lobbyCopy.classList.remove("hidden");
-  lobbyTip.textContent = "房间已创建 · 复制链接发给朋友，关闭此窗口后点「开始游戏 → 出发」";
+  lobbyTip.textContent = "房间已创建，正在进入准备界面…";
+  // 创建房间直接进准备界面，不用再回主菜单点开始
+  startP2P(roomCode, "host");
+  enterCoopLobby();
 });
 lobbyCopy.addEventListener("click", () => {
   if (!roomCode) return;
@@ -653,6 +656,7 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
           weapon?: string;
           cx?: number;
           cy?: number;
+          phase?: string;
           host?: { ready?: boolean; weapon?: string; cx?: number; cy?: number } | null;
           panel?: boolean;
           kind?: string;
@@ -671,6 +675,8 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
           p2pInput = mergeInput(p2pInput, msg.snap);
         } else if (msg.t === 'lobby') {
           if (p2pRole === 'host') {
+            // 阶段切换瞬间，客人可能还在发上一阶段的状态，丢掉
+            if (typeof msg.phase === 'string' && msg.phase !== lobbyPhase) return;
             if (typeof msg.ready === 'boolean') {
               lobbyPeer = {
                 ready: msg.ready,
@@ -680,8 +686,16 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
               };
               renderCoopLobby();
             }
-          } else if (msg.host) {
-            lobbyRemoteHost = msg.host;
+          } else {
+            if (msg.phase === 'ready' || msg.phase === 'loadout') {
+              if (msg.phase !== lobbyPhase) {
+                // 房主推进到下一阶段：清掉自己的准备状态
+                lobbyPhase = msg.phase;
+                if (lobbySelf) lobbySelf.ready = false;
+                lobbyStartAt = null;
+              }
+            }
+            if (msg.host) lobbyRemoteHost = msg.host;
             renderCoopLobby();
           }
         } else if (msg.t === 'ctl' && typeof msg.panel === 'boolean') {
@@ -717,10 +731,16 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
 /* ---------------- 联机准备大厅 ---------------- */
 
 let lobbyActive = false;
+let lobbyPhase: LobbyPhase = 'ready';
 let lobbyStartAt: number | null = null;
 let lobbySelf: { ready: boolean; weapon: LobbyWeapon; cx: number; cy: number } | null = null;
 let lobbyPeer: { ready: boolean; weapon: LobbyWeapon; cx: number; cy: number } | null = null;
-let lobbyRemoteHost: { ready?: boolean; weapon?: string; cx?: number; cy?: number } | null = null;
+let lobbyRemoteHost: {
+  ready?: boolean;
+  weapon?: string;
+  cx?: number;
+  cy?: number;
+} | null = null;
 let lobbyAcc = 0;
 let guestWeapon: LobbyWeapon = 'railgun';
 let panelSent: boolean | null = null;
@@ -741,6 +761,10 @@ const coop = new CoopLobby({
     if (!lobbySelf) return;
     lobbySelf.cx = nx;
     lobbySelf.cy = ny;
+  },
+  onInvite: () => {
+    const url = onlineUrl(p2pRoom, 'guest');
+    void navigator.clipboard?.writeText(url);
   },
 });
 
@@ -763,13 +787,21 @@ function renderCoopLobby(): void {
       cy: typeof lobbyRemoteHost.cy === 'number' ? lobbyRemoteHost.cy : 0.5,
     };
   }
-  coop.update({ role: p2pRole, self, peer, countdown: lobbyStartAt !== null });
+  coop.update({
+    role: p2pRole,
+    phase: lobbyPhase,
+    room: p2pRoom,
+    self,
+    peer,
+    countdown: lobbyStartAt !== null,
+  });
   if (peer) coop.setPeerCursor(peer.cx, peer.cy);
 }
 
 function enterCoopLobby(): void {
   if (lobbyActive) return;
   lobbyActive = true;
+  lobbyPhase = 'ready';
   lobbyStartAt = null;
   lobbyAcc = 0;
   lobbySelf = { ready: false, weapon: selectedWeapon, cx: 0.5, cy: 0.5 };
@@ -782,7 +814,7 @@ function enterCoopLobby(): void {
   prepScreen.classList.add('hidden');
   screenEnd.classList.add('hidden');
   hudEl.classList.remove('on');
-  coop.show(p2pRole, selectedWeapon);
+  coop.show(p2pRole, selectedWeapon, p2pRoom);
   renderCoopLobby();
 }
 
@@ -809,11 +841,12 @@ function updateCoopLobby(dt: number): void {
   if (lobbyAcc < 1 / 30) return;
   lobbyAcc = 0;
   if (p2pRole === 'host') {
-    p2p.sendState({ t: 'lobby', host: lobbySelf, guest: lobbyPeer });
-    maybeStartCoop();
+    p2p.sendState({ t: 'lobby', phase: lobbyPhase, host: lobbySelf, guest: lobbyPeer });
+    advanceCoop();
   } else {
     p2p.sendInput({
       t: 'lobby',
+      phase: lobbyPhase,
       ready: lobbySelf.ready,
       weapon: lobbySelf.weapon,
       cx: lobbySelf.cx,
@@ -822,9 +855,20 @@ function updateCoopLobby(dt: number): void {
   }
 }
 
-/** 双方都点了「出发」才开始，留一点时间让对面看到「即将开始」 */
-function maybeStartCoop(): void {
+/** 准备阶段：双方都准备 → 进入选武器；选武器阶段：双方都出发 → 开局 */
+function advanceCoop(): void {
   const both = !!lobbySelf?.ready && !!lobbyPeer?.ready;
+
+  if (lobbyPhase === 'ready') {
+    if (!both) return;
+    lobbyPhase = 'loadout';
+    lobbyStartAt = null;
+    lobbySelf!.ready = false;
+    if (lobbyPeer) lobbyPeer.ready = false;
+    renderCoopLobby();
+    return;
+  }
+
   if (!both) {
     if (lobbyStartAt !== null) {
       lobbyStartAt = null;

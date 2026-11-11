@@ -1818,3 +1818,71 @@ body {
   font-size: 11.5px;
   opacity: 0.65;
 }
+
+/* ---------- 联机房间：房间号 + 阶段切换 ---------- */
+
+.coop-room {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 16px 0 2px;
+  font-size: 12.5px;
+  color: #7f9ab4;
+}
+
+.coop-room-label {
+  letter-spacing: 0.12em;
+}
+
+.coop-room b {
+  font: 16px/1 ui-monospace, monospace;
+  letter-spacing: 0.3em;
+  color: #7fd8ff;
+}
+
+.coop-room .btn.small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* 准备阶段只报状态，进入选武器阶段才露出武器和技能 */
+.coop-card .coop-weapons,
+.coop-card .coop-skills {
+  display: none;
+}
+
+.coop-card.show-kit .coop-weapons {
+  display: flex;
+}
+
+.coop-card.show-kit .coop-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+
+.coop-skill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 160, 200, 0.18);
+  font-size: 11px;
+  color: #93a9bf;
+}
+
+.coop-skill i {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 3px;
+  background: rgba(127, 216, 255, 0.12);
+  color: #8fd6ff;
+  font-style: normal;
+  font-size: 9.5px;
+}
