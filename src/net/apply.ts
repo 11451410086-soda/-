@@ -1,6 +1,7 @@
 import type { World } from '../sim/world';
 import type { WorldWire } from '../../server/protocol';
 import type { Enemy, Player } from '../sim/types';
+import type { WorldEvent } from '../sim/types';
 
 /** 把服务器快照写进本地世界对象（渲染层直接复用） */
 
@@ -51,6 +52,11 @@ export function applySnapshot(world: World, wire: WorldWire): void {
   world.wave.n = wire.wave.n;
   world.wave.phase = wire.wave.phase as typeof world.wave.phase;
   world.wave.timer = wire.wave.timer;
+
+  // 房主把这一拍的特效事件也发过来了，塞进本地事件队列让渲染层播
+  if (Array.isArray(wire.events) && wire.events.length > 0) {
+    world.events.push(...(wire.events as WorldEvent[]));
+  }
 
   const prevEnemies = new Map(world.enemies.map((e) => [e.id, e]));
   world.enemies = wire.enemies.map((e) => ({

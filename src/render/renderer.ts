@@ -64,7 +64,12 @@ const CYAN = 'rgba(120, 230, 255, 1)';
 const PURPLE = 'rgba(180, 120, 255, 1)';
 const ORANGE = 'rgba(255, 176, 90, 1)';
 
-const LOW_QUALITY = typeof location !== 'undefined' && new URLSearchParams(location.search).has('low');
+const QUERY = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null;
+const TOUCH_MOBILE =
+  typeof navigator !== 'undefined' &&
+  /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+// 手机默认低画质：粒子/暗角在移动 GPU 上很吃帧；想看全效果加 ?high=1
+const LOW_QUALITY = !!QUERY && (QUERY.has('low') || (TOUCH_MOBILE && !QUERY.has('high')));
 
 export const renderStats = { low: LOW_QUALITY };
 

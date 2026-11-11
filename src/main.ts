@@ -9,6 +9,7 @@ import { serializeWorld } from './net/snapshot';
 import { applySnapshot, smoothWorld } from './net/apply';
 import type { InputSnapshot } from './shared/types';
 import type { WorldWire } from '../server/protocol';
+import type { WorldEvent } from './sim/types';
 import { clamp } from './shared/util';
 import { World } from './sim/world';
 import { Hud } from './ui/hud';
@@ -511,6 +512,8 @@ let p2pReady = false;
 let p2pSnap: WorldWire | null = null;
 let p2pInput: InputSnapshot | null = null;
 let p2pSendAcc = 0;
+/** 房主攒下来的特效事件，随快照一起发给客人（渲染层每帧会把 world.events 清空，得单独留一份） */
+const p2pEvents: WorldEvent[] = [];
 let stateSent = 0;
 let lastSeq = -2;
 let lastAppliedSnap: WorldWire | null = null;
@@ -684,6 +687,9 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
         if (msg.t === 'state' && msg.world) {
           p2pSnap = msg.world;
           snapCount++;
+          if (DEBUG && msg.world.events && msg.world.events.length > 0) {
+            console.log('[net] 收到事件', msg.world.events.length);
+          }
           // 客人收到第一帧快照才建世界，避免空跑
           if (p2pRole === 'guest' && !world) enterGuestWorld();
         } else if (msg.t === 'input' && msg.snap) {
@@ -1106,12 +1112,20 @@ function frame(now: number): void {
           acc -= STEP;
           guard++;
         }
+        // 这一帧产生的特效事件先留一份给客人（下面渲染时会清空 world.events）
+        if (world.events.length > 0) {
+          for (const ev of world.events) p2pEvents.push(ev);
+          if (p2pEvents.length > 80) p2pEvents.splice(0, p2pEvents.length - 80);
+        }
       }
       if (p2p && p2pReady) {
         p2pSendAcc += dt;
         if (p2pSendAcc >= 1 / 30) {
           p2pSendAcc = 0;
-          p2p.sendState({ t: 'state', world: serializeWorld(world) });
+          p2p.sendState({
+            t: 'state',
+            world: serializeWorld(world, p2pEvents.splice(0, p2pEvents.length)),
+          });
           if (DEBUG && stateSent < 3) {
             stateSent++;
             console.log('[net] 发快照', stateSent);

@@ -1,7 +1,7 @@
 import type { World } from '../sim/world';
 
-/** 世界 → 可传输快照（P2P 房主用） */
-export function serializeWorld(w: World): unknown {
+/** 世界 → 可传输快照（P2P 房主用）。events 是这一拍攒下来的特效事件，客人靠它播特效 */
+export function serializeWorld(w: World, events: unknown[] = []): unknown {
   return {
     time: w.time,
     state: w.state,
@@ -56,6 +56,6 @@ export function serializeWorld(w: World): unknown {
     shots: w.shots.map((s) => ({ x: s.pos.x, y: s.pos.y, radius: s.radius })),
     bottles: w.bottles.map((b) => ({ x: b.pos.x, y: b.pos.y })),
     crystals: w.crystals.map((c) => ({ x: c.pos.x, y: c.pos.y, kind: c.kind, hp: c.hp, maxHp: c.maxHp, alive: c.alive })),
-    events: [],
+    events,
   };
 }
