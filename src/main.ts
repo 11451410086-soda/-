@@ -1084,15 +1084,20 @@ function frame(now: number): void {
   const t0 = performance.now();
   if (p2pMode) {
     if (p2pRole === 'host') {
-      const inp = BOT ? buildBotInput(world, false) : buildInput(true);
       if (world.state === 'playing' && !paused) {
         acc += dt;
         let guard = 0;
         while (acc >= STEP && guard < 5) {
-          // 房主权威：自己的输入 + 客人最新输入，一起推进世界
+          // 房主权威：自己的输入 + 客人最新输入，一起推进世界。
+          // 注意输入必须在循环里取：高刷新率下有些帧不推进逻辑，
+          // 在外面取会把按键边沿吃掉（表现就是第一下没反应）。
+          const inp = BOT ? buildBotInput(world, false) : buildInput(true);
           const guestInp = p2pInput ?? EMPTY_INPUT;
           if (DEBUG && (guestInp.skillQ || guestInp.skillE || guestInp.firePressed)) {
             console.log('[net] 客人边沿', guestInp.skillQ ? 'Q' : guestInp.skillE ? 'E' : 'fire');
+          }
+          if (DEBUG && (inp.skillQ || inp.skillE || inp.firePressed)) {
+            console.log('[net] 房主边沿', inp.skillQ ? 'Q' : inp.skillE ? 'E' : 'fire');
           }
           world.tick([inp, guestInp], STEP);
           clearInputEdges(guestInp);
@@ -1160,7 +1165,8 @@ function frame(now: number): void {
       }
       // 本地预测：自己的角色立刻按输入移动，不等服务器
       const me = world.player;
-      const inp = BOT ? buildBotInput(world, false) : buildInput(true);
+      // 这里不能吃掉边沿：输入是 30Hz 才发一次，边沿要留到真正发送的那一帧
+      const inp = BOT ? buildBotInput(world, false) : buildInput(false);
       if (me.alive && !me.panelOpen) {
         const sp = 88;
         me.pos.x += inp.moveX * sp * dt;
@@ -1184,7 +1190,8 @@ function frame(now: number): void {
       inputAcc += dt;
       if (inputAcc >= 1 / 30) {
         inputAcc = 0;
-        net.sendInput(BOT ? buildBotInput(world, false) : buildInput(true));
+        net.sendInput(inp);
+        clearEdges();
       }
     }
   } else if (world.state === 'playing' && !paused) {
