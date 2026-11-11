@@ -1176,8 +1176,26 @@ function frame(now: number): void {
           clearEdges();
         }
       }
-      // 客人不跑模拟：只按房主快照插值（用实测间隔，房主掉帧时不会一顿一顿地追）
-      smoothWorld(world, dt, snapInterval);
+      // 客人不跑模拟，但自己的移动必须在本地预测，否则手感到不了 30Hz 快照的延迟
+      const me = world.player;
+      if (me.alive && !me.panelOpen) world.predictPlayerMove(me, inp, dt);
+      smoothWorld(world, dt, snapInterval, true);
+      // 软纠偏：小误差是网络延迟造成的（房主看到的是你 RTT 之前的位置），不要管；
+      // 误差明显变大才慢慢拉回，特别大（传送/复活/状态不同）才直接对齐。
+      const net2 = me as unknown as { tx?: number; ty?: number };
+      if (net2.tx !== undefined) {
+        const dx = net2.tx - me.pos.x;
+        const dy = (net2.ty ?? 0) - me.pos.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > 90 * 90) {
+          me.pos.x = net2.tx;
+          me.pos.y = net2.ty!;
+        } else if (d2 > 22 * 22) {
+          const k = Math.min(1, dt * 3);
+          me.pos.x += dx * k;
+          me.pos.y += dy * k;
+        }
+      }
     }
   } else if (ONLINE) {
     if (onlineReady) {

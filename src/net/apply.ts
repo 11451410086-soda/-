@@ -187,10 +187,12 @@ export function applySnapshot(world: World, wire: WorldWire): void {
   }
 }
 
-/** 每帧朝目标位置靠拢（不分配新对象，帧率友好） */
-export function smoothWorld(world: World, dt: number, interval = 0.033): void {
+/** 每帧朝目标位置靠拢（不分配新对象，帧率友好）。skipLocal=true 时本地玩家交给预测处理 */
+export function smoothWorld(world: World, dt: number, interval = 0.033, skipLocal = false): void {
   const k = Math.min(1, dt / Math.max(0.016, interval * 1.1));
-  for (const p of world.players) {
+  for (let i = 0; i < world.players.length; i++) {
+    if (skipLocal && i === world.localIndex) continue;
+    const p = world.players[i];
     const t = p as unknown as { tx?: number; ty?: number };
     if (t.tx === undefined) continue;
     p.pos.x += (t.tx - p.pos.x) * k;

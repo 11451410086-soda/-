@@ -286,6 +286,23 @@ export class World {
     this.updateGuard(input, dt);
   }
 
+  /**
+   * 联机客人端预测：只算「移动」这一段，和 updatePlayer 里的移动逻辑保持一致。
+   * 客人不跑模拟，但自己的角色必须立刻响应，否则高刷屏上手感像延迟 100ms。
+   */
+  predictPlayerMove(p: Player, input: InputSnapshot, dt: number): void {
+    const len = Math.hypot(input.moveX, input.moveY);
+    if (len > 0.01 && p.eggT <= 0) {
+      const zoneBuff = p.zoneBuffT > 0 ? 1 + BLACKHOLE_SHAPE.buffSpeed : 1;
+      const stoneSlow = p.stoneT > 0 ? STONE.speedMult : 1;
+      const spd = this.hero.speed * stoneSlow * zoneBuff;
+      p.pos.x += (input.moveX / len) * spd * dt;
+      p.pos.y += (input.moveY / len) * spd * dt;
+    }
+    p.pos.x = clamp(p.pos.x, 10, LEVEL.width - 10);
+    p.pos.y = clamp(p.pos.y, LEVEL.road.top + 16, LEVEL.road.bottom - 10);
+  }
+
   /* ---------------- 三华求御 ---------------- */
 
 
