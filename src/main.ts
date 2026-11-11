@@ -1241,8 +1241,12 @@ if (p2pMode) {
     screenTitle.classList.add('hidden');
     showGuestWait();
     startP2P(p2pRoom || 'MAIN', 'guest');
+  } else if (p2pRoom) {
+    // 带房间号的房主链接：直接进准备房间，不用再点菜单
+    startP2P(p2pRoom, 'host');
+    enterCoopLobby();
   } else {
-    startP2P(p2pRoom || 'MAIN', 'host');
+    startP2P('MAIN', 'host');
   }
 }
 
