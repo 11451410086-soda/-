@@ -25,6 +25,8 @@ export interface LobbyView {
   room: string;
   self: LobbyCard;
   peer: LobbyCard | null;
+  /** 数据通道已连上（但对面可能还没进房间/没广播） */
+  peerConnected: boolean;
   countdown: boolean;
 }
 
@@ -62,6 +64,13 @@ export class CoopLobby {
   private roomCode: HTMLElement;
   private inviteBtn: HTMLButtonElement;
   private readyBtn: HTMLButtonElement;
+  private loadoutEl: HTMLElement;
+  private heroPick: HTMLElement;
+  private peerTitle: HTMLElement;
+  private peerWeapon: HTMLElement;
+  private peerTag: HTMLElement;
+  private peerState: HTMLElement;
+  private weaponCards: HTMLElement[] = [];
   private cards: Record<LobbyRole, CardEls>;
   private cursors: Record<LobbyRole, HTMLElement>;
   private handlers: CoopLobbyHandlers;
@@ -84,6 +93,15 @@ export class CoopLobby {
       '<button id="coop-invite" class="btn small">复制邀请链接</button>' +
       '</div>' +
       '<div class="coop-cards" id="coop-cards"></div>' +
+      '<div class="coop-loadout" id="coop-loadout">' +
+      '<div class="hero-pick" id="coop-hero-pick"></div>' +
+      '<div class="coop-peer-mini">' +
+      '<div class="coop-peer-title" id="coop-peer-title">客人</div>' +
+      '<div class="coop-peer-weapon" id="coop-peer-weapon">还未选择</div>' +
+      '<div class="coop-peer-tag" id="coop-peer-tag"></div>' +
+      '<div class="coop-peer-state" id="coop-peer-state">等待进入</div>' +
+      '</div>' +
+      '</div>' +
       '<div class="coop-actions">' +
       '<button id="coop-ready" class="btn">准 备</button>' +
       '<button id="coop-leave" class="btn ghost">离 开</button>' +
@@ -98,6 +116,13 @@ export class CoopLobby {
     this.roomCode = this.root.querySelector('#coop-room-code') as HTMLElement;
     this.inviteBtn = this.root.querySelector('#coop-invite') as HTMLButtonElement;
     this.readyBtn = this.root.querySelector('#coop-ready') as HTMLButtonElement;
+    this.loadoutEl = this.root.querySelector('#coop-loadout') as HTMLElement;
+    this.heroPick = this.root.querySelector('#coop-hero-pick') as HTMLElement;
+    this.peerTitle = this.root.querySelector('#coop-peer-title') as HTMLElement;
+    this.peerWeapon = this.root.querySelector('#coop-peer-weapon') as HTMLElement;
+    this.peerTag = this.root.querySelector('#coop-peer-tag') as HTMLElement;
+    this.peerState = this.root.querySelector('#coop-peer-state') as HTMLElement;
+    this.buildLoadout();
     this.cards = {
       host: this.makeCard('host'),
       guest: this.makeCard('guest'),
@@ -171,8 +196,56 @@ export class CoopLobby {
     return !this.root.classList.contains('hidden');
   }
 
-  show(role: LobbyRole, weapon: LobbyWeapon, room: string): void {
-    this.role = role;
+  /** 选武器阶段的大卡片：跟单机准备界面同一套样式 */
+  private buildLoadout(): void {
+    const rail = RAIL_WEAPON;
+    const shield = SHIELD_WEAPON;
+    const kv = (k: string, v: string) =>
+      '<div class="kv"><span>' + k + '</span><b>' + v + '</b></div>';
+    const ops = (rows: [string, string][]) =>
+      '<div class="card-ops"><div class="card-ops-title">武器操作</div>' +
+      rows
+        .map(([k, v]) => '<div class="card-ops-row"><b>' + k + '</b><span>' + v + '</span></div>')
+        .join('') +
+      '</div>';
+
+    this.heroPick.innerHTML =
+      '<div class="prep-card weapon" data-w="railgun">' +
+      '<div class="prep-card-head"><b>' + rail.name + '</b><span>远程</span></div>' +
+      '<p class="prep-desc">射出一枚圆形蓝色电磁球（身份：飞行物），命中造成伤害。</p>' +
+      '<div class="prep-detail">' +
+      kv('飞行物伤害', String(rail.damage)) +
+      kv('飞行物间隔', rail.fireInterval + ' 秒') +
+      kv('飞行物范围', String(rail.range)) +
+      kv('回复时间', rail.reload + ' 秒') +
+      kv('容量', rail.magSize + ' 发') +
+      ops([['左键', '射击'], ['右键', '瞄准'], ['R', '换弹']]) +
+      '<div class="prep-tags"><i>远程</i><i>飞行物</i></div>' +
+      '</div></div>' +
+      '<div class="prep-card weapon" data-w="shield">' +
+      '<div class="prep-card-head"><b>' + shield.name + '</b><span>近战</span></div>' +
+      '<p class="prep-desc">身侧有可转向的抵挡范围，挡下飞行物与近战击；左键盾击、击退敌人。耐久耗尽会破碎，进入陨星状态。</p>' +
+      '<div class="prep-detail">' +
+      kv('近战击伤害', String(shield.damage)) +
+      kv('近战击间隔', shield.interval + ' 秒') +
+      kv('近战击范围', String(shield.range)) +
+      kv('控制时长', shield.knockTime + ' 秒') +
+      kv('耐久', String(shield.durabilityMax)) +
+      kv('减益效果', '抵挡伤害 −' + Math.round(shield.blockDR * 100) + '%') +
+      kv('增益加成', '陨星减伤 ' + Math.round(shield.meteorDR * 100) + '%') +
+      ops([['左键', '盾击'], ['右键', '转向']]) +
+      '<div class="prep-tags"><i>近战</i><i>近战击</i><i>生理控制</i></div>' +
+      '</div></div>';
+
+    this.weaponCards = Array.from(
+      this.heroPick.querySelectorAll('.prep-card.weapon'),
+    ) as HTMLElement[];
+    for (const el of this.weaponCards) {
+      el.addEventListener('click', () => this.handlers.onWeapon(el.dataset.w as LobbyWeapon));
+    }
+  }
+
+  show(role: LobbyRole, weapon: LobbyWeapon, room: string): void {    this.role = role;
     this.phase = 'ready';
     this.self = { weapon, ready: false, cx: 0.5, cy: 0.5 };
     this.root.dataset.self = role;
@@ -219,7 +292,22 @@ export class CoopLobby {
     this.readyBtn.classList.toggle('ready', view.self.ready);
 
     this.renderCard(view.role, view.self, true, true, view.phase);
-    this.renderCard(peerSide, view.peer, false, view.peer !== null, view.phase);
+    this.renderCard(peerSide, view.peer, false, view.peer !== null || view.peerConnected, view.phase);
+
+    // 选武器阶段：大卡片跟单机准备界面一致，对方只显示简略信息
+    for (const el of this.weaponCards) {
+      el.classList.toggle('selected', el.dataset.w === view.self.weapon);
+    }
+    this.peerTitle.textContent = view.role === 'guest' ? '房主' : '客人';
+    if (view.peer) {
+      this.peerWeapon.textContent = WEAPON_NAME[view.peer.weapon];
+      this.peerTag.textContent = view.peer.weapon === 'shield' ? '近战 · 陨盾' : '远程 · 电磁炮';
+      this.peerState.textContent = view.peer.ready ? '已出发' : '未准备';
+    } else {
+      this.peerWeapon.textContent = '还未选择';
+      this.peerTag.textContent = '';
+      this.peerState.textContent = view.peerConnected ? '已连接' : '等待进入';
+    }
 
     if (view.countdown) {
       this.sub.textContent = '双方已就绪，即将开始…';

@@ -29,6 +29,7 @@ const endSub = document.getElementById('end-sub') as HTMLElement;
 const endStats = document.getElementById('end-stats') as HTMLElement;
 const hudEl = document.getElementById('hud') as HTMLElement;
 const pauseScreen = document.getElementById('pause') as HTMLElement;
+const pauseTitle = document.getElementById('pause-title') as HTMLElement;
 const prepScreen = document.getElementById('prep') as HTMLElement;
 let paused = false;
 
@@ -238,6 +239,8 @@ function setPaused(v: boolean): void {
     mouse.left = false;
     mouse.right = false;
     clearEdges();
+    // 客人这边暂停不了房主的世界，别写「已暂停」骗人
+    pauseTitle.textContent = p2pMode && p2pRole === 'guest' ? '菜单 · 联机中世界仍在进行' : '已暂停';
   }
   lastTime = performance.now();
 }
@@ -411,6 +414,10 @@ function startGame(heroId: HeroId = 'guard'): void {
   screenTitle.classList.add('hidden');
   screenEnd.classList.add('hidden');
   prepScreen.classList.add('hidden');
+  // 结算界面可能把它改成「等待房主重开」，开新局要还原
+  const rb = document.getElementById('btn-restart') as HTMLButtonElement;
+  rb.disabled = false;
+  rb.textContent = '再次净化';
   setPaused(false);
   hudEl.classList.add('on');
   keys.clear();
@@ -438,6 +445,11 @@ function showEnd(w: World): void {
   `;
   hudEl.classList.remove('on');
   screenEnd.classList.remove('hidden');
+  // 联机客人不能自己重开，得等房主
+  const coopGuest = p2pMode && p2pRole === 'guest';
+  const restartBtn = document.getElementById('btn-restart') as HTMLButtonElement;
+  restartBtn.disabled = coopGuest;
+  restartBtn.textContent = coopGuest ? '等待房主重开' : '再次净化';
 }
 
 let lastHero: HeroId = 'guard';
@@ -459,6 +471,8 @@ document.getElementById('btn-deploy')!.addEventListener('click', () => {
 document.getElementById('btn-codex')!.addEventListener('click', () => codex.show());
 document.getElementById('btn-restart')!.addEventListener('click', () => {
   if (p2pRole === 'guest' && p2pMode) return;
+  // 联机房主重开：通知客人一起重置，否则客人会停在结算界面
+  if (p2pMode && p2pRole === 'host' && p2p) p2p.sendState({ t: 'restart' });
   startGame(lastHero);
 });
 document.getElementById('btn-cheat')!.addEventListener('click', () => {
@@ -643,8 +657,8 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
         if (p2pReady) setNetStatus(null);
       }, 3200);
       if (role === 'host') ensureHostPlayers();
-      // 客人连上就进准备大厅，和房主看同一个界面
-      else enterCoopLobby();
+      // 客人连上就进准备大厅；但如果他本来就还在游戏里（断线重连），别把人踢回房间
+      else if (!world) enterCoopLobby();
     },
     onData: (raw) => {
       try {
@@ -706,6 +720,18 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
         } else if (msg.t === 'cheat') {
           const gp = world?.players[1];
           if (gp) gp.coins += 1000;
+        } else if (msg.t === 'restart' && p2pRole === 'guest') {
+          // 房主重开一局：客人丢掉旧世界，等下一帧快照重新建
+          world = null;
+          p2pSnap = null;
+          lastAppliedSnap = null;
+          ended = false;
+          panelWasOpen = false;
+          panelSig = '';
+          panel.hide();
+          screenEnd.classList.add('hidden');
+          screenTitle.classList.add('hidden');
+          prepScreen.classList.add('hidden');
         }
       } catch {
         /* 坏包直接丢 */
@@ -793,6 +819,7 @@ function renderCoopLobby(): void {
     room: p2pRoom,
     self,
     peer,
+    peerConnected: p2pReady,
     countdown: lobbyStartAt !== null,
   });
   if (peer) coop.setPeerCursor(peer.cx, peer.cy);
