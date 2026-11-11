@@ -205,8 +205,8 @@ export class World {
       this.actor = p;
       this.updatePlayer(list[i] ?? list[0], dt);
       this.actor = null;
-      // 单机：打开面板时暂停世界
-      if (p.panelOpen) return;
+      // 单机：打开面板时暂停世界；联机时只冻结开面板的那个人，别把队友也冻住
+      if (p.panelOpen && this.players.length === 1) return;
     }
 
     this.updateEnemies(dt);

@@ -71,6 +71,11 @@ export interface PlayerWire {
   alive: boolean;
   coins: number;
   skillCd: number[];
+  /** 预瞄状态：客人靠它画技能/武器预览（服务器权威模式可缺省） */
+  mode?: string;
+  throwTarget?: { x: number; y: number } | null;
+  aiming?: boolean;
+  leapTo?: { x: number; y: number };
 }
 
 export interface EnemyWire {

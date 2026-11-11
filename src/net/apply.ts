@@ -1,6 +1,6 @@
 import type { World } from '../sim/world';
 import type { WorldWire } from '../../server/protocol';
-import type { Enemy } from '../sim/types';
+import type { Enemy, Player } from '../sim/types';
 
 /** 把服务器快照写进本地世界对象（渲染层直接复用） */
 
@@ -37,6 +37,14 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     p.alive = pw.alive;
     p.coins = pw.coins;
     for (let i = 0; i < p.skillCd.length; i++) p.skillCd[i] = pw.skillCd[i] ?? 0;
+    // 预瞄：客人本地不跑模拟，这些状态只能由房主带过来
+    p.mode = (pw.mode as Player['mode']) ?? 'none';
+    p.throwTarget = pw.throwTarget ? { x: pw.throwTarget.x, y: pw.throwTarget.y } : null;
+    p.aiming = pw.aiming ?? false;
+    if (pw.leapTo) {
+      p.leapTo.x = pw.leapTo.x;
+      p.leapTo.y = pw.leapTo.y;
+    }
   }
 
   world.state = wire.state;

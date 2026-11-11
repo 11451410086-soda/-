@@ -60,6 +60,8 @@ interface ShapeUI {
   buy: HTMLButtonElement;
 }
 
+type BuyHandler = (kind: 'weapon' | 'skill', id: string, skillId?: string) => void;
+
 export class GrowthPanel {
   private root = document.getElementById('panel') as HTMLElement;
   private pointsEl = document.getElementById('panel-points') as HTMLElement;
@@ -77,9 +79,15 @@ export class GrowthPanel {
   private skillShapeSkill: Record<string, string> = {};
   private world: World | null = null;
   private built = false;
+  /** 联机客人：购买要先发给房主执行，不能只改本地副本 */
+  private buyHandler: BuyHandler | null = null;
 
   constructor(onClose: () => void) {
     this.closeBtn.addEventListener('click', onClose);
+  }
+
+  setBuyHandler(handler: BuyHandler | null): void {
+    this.buyHandler = handler;
   }
 
   isOpen(): boolean {
@@ -135,6 +143,10 @@ export class GrowthPanel {
       btn.className = 'buy';
       btn.addEventListener('click', () => {
         if (!this.world) return;
+        if (this.buyHandler) {
+          this.buyHandler('weapon', def.id);
+          return;
+        }
         if (this.world.buyShape(def.id)) this.refresh();
       });
       card.appendChild(name);
@@ -189,6 +201,10 @@ export class GrowthPanel {
         btn.className = 'buy';
         btn.addEventListener('click', () => {
           if (!this.world) return;
+          if (this.buyHandler) {
+            this.buyHandler('skill', def.id, skillId);
+            return;
+          }
           if (this.world.buySkillShape(skillId, def.id)) this.refresh();
         });
         card.appendChild(name);

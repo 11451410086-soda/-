@@ -14,6 +14,8 @@ import { World } from './sim/world';
 import { Hud } from './ui/hud';
 import { Codex } from './ui/codex';
 import { GrowthPanel } from './ui/panel';
+import { CoopLobby } from './ui/coop';
+import type { LobbyCard, LobbyWeapon } from './ui/coop';
 
 window.addEventListener('error', (e) => {
   console.error('BOOT ERROR:', e.message, '@', e.filename, e.lineno, e.colno);
@@ -392,6 +394,8 @@ function startGame(heroId: HeroId = 'guard'): void {
   renderer.particles.length = 0;
   renderer.numbers.length = 0;
   renderer.rings.length = 0;
+  // 单机/房主：购买在本地执行
+  panel.setBuyHandler(null);
   camera.update(world.player.pos, 0, true);
   screenTitle.classList.add('hidden');
   screenEnd.classList.add('hidden');
@@ -433,9 +437,13 @@ document.getElementById('btn-start')!.addEventListener('click', () => {
 document.getElementById('btn-deploy')!.addEventListener('click', () => {
   prepScreen.classList.add('hidden');
   lastHero = 'guard';
-  startGame(lastHero);
-  // 在房间弹窗里创建过房间：出发即开联机，等朋友进来
   if (roomCode) startP2P(roomCode, 'host');
+  // 联机房主：先进准备大厅，双方都点「出发」才开打
+  if (p2pMode && p2pRole === 'host') {
+    enterCoopLobby();
+    return;
+  }
+  startGame(lastHero);
 });
 document.getElementById('btn-codex')!.addEventListener('click', () => codex.show());
 document.getElementById('btn-restart')!.addEventListener('click', () => {
@@ -444,7 +452,9 @@ document.getElementById('btn-restart')!.addEventListener('click', () => {
 });
 document.getElementById('btn-cheat')!.addEventListener('click', () => {
   if (!world) return;
-  world.player.coins += 1000;
+  // 客人的世界以房主为准，本地加钱会被下一帧快照覆盖，得让房主加
+  if (p2pMode && p2pRole === 'guest') p2p?.sendInput({ t: 'cheat' });
+  else world.player.coins += 1000;
   hud.toast('域币 +1000');
 });
 
@@ -478,12 +488,13 @@ let p2pInput: InputSnapshot | null = null;
 let p2pSendAcc = 0;
 let stateSent = 0;
 let lastSeq = -2;
+let lastAppliedSnap: WorldWire | null = null;
 
 /* ---------------- 联机状态 ---------------- */
 
 const netStatusEl = document.createElement('div');
 netStatusEl.id = 'net-status';
-netStatusEl.className = 'net-status';
+netStatusEl.className = 'net-status hidden';
 document.body.appendChild(netStatusEl);
 
 function setNetStatus(text: string | null, kind: 'info' | 'good' | 'bad' = 'info'): void {
@@ -568,6 +579,16 @@ function mergeInput(prev: InputSnapshot | null, next: InputSnapshot): InputSnaps
   return prev;
 }
 
+/** 房主代客人执行购买：buyShape 内部看 localIndex 取武器塑造，先临时切到 1 号玩家 */
+function applyGuestBuy(kind: string, id: string, skillId?: string): void {
+  if (!world || p2pRole !== 'host') return;
+  const prev = world.localIndex;
+  world.localIndex = 1;
+  if (kind === 'weapon') world.buyShape(id, 1);
+  else if (kind === 'skill' && skillId) world.buySkillShape(skillId, id, 1);
+  world.localIndex = prev;
+}
+
 function signalUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   // 开发模式（vite 5173）连独立的 3001；部署后同源
@@ -594,10 +615,25 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
         if (p2pReady) setNetStatus(null);
       }, 3200);
       if (role === 'host') ensureHostPlayers();
+      // 客人连上就进准备大厅，和房主看同一个界面
+      else enterCoopLobby();
     },
     onData: (raw) => {
       try {
-        const msg = JSON.parse(raw) as { t?: string; world?: WorldWire; snap?: InputSnapshot };
+        const msg = JSON.parse(raw) as {
+          t?: string;
+          world?: WorldWire;
+          snap?: InputSnapshot;
+          ready?: boolean;
+          weapon?: string;
+          cx?: number;
+          cy?: number;
+          host?: { ready?: boolean; weapon?: string; cx?: number; cy?: number } | null;
+          panel?: boolean;
+          kind?: string;
+          id?: string;
+          skillId?: string;
+        };
         if (!stateLogged && DEBUG) {
           stateLogged = true;
           console.log('[net] 首包', msg.t, 'world?', !!msg.world);
@@ -608,13 +644,41 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
           if (p2pRole === 'guest' && !world) enterGuestWorld();
         } else if (msg.t === 'input' && msg.snap) {
           p2pInput = mergeInput(p2pInput, msg.snap);
+        } else if (msg.t === 'lobby') {
+          if (p2pRole === 'host') {
+            if (typeof msg.ready === 'boolean') {
+              lobbyPeer = {
+                ready: msg.ready,
+                weapon: msg.weapon === 'shield' ? 'shield' : 'railgun',
+                cx: typeof msg.cx === 'number' ? msg.cx : 0.5,
+                cy: typeof msg.cy === 'number' ? msg.cy : 0.5,
+              };
+              renderCoopLobby();
+            }
+          } else if (msg.host) {
+            lobbyRemoteHost = msg.host;
+            renderCoopLobby();
+          }
+        } else if (msg.t === 'ctl' && typeof msg.panel === 'boolean') {
+          const gp = world?.players[1];
+          if (gp) gp.panelOpen = msg.panel;
+        } else if (msg.t === 'buy' && msg.id) {
+          applyGuestBuy(msg.kind ?? '', msg.id, msg.skillId);
+        } else if (msg.t === 'cheat') {
+          const gp = world?.players[1];
+          if (gp) gp.coins += 1000;
         }
       } catch {
         /* 坏包直接丢 */
       }
     },
     onFail: (r) => {
+      p2pReady = false;
       p2pInput = null;
+      // 断线后别让大厅还显示对方「已就绪」
+      lobbyPeer = null;
+      lobbyRemoteHost = null;
+      if (lobbyActive) renderCoopLobby();
       setNetStatus('联机失败：' + r, 'bad');
     },
     onStatus: (st, detail) => {
@@ -623,6 +687,143 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
     },
   });
   p2p.start();
+}
+
+/* ---------------- 联机准备大厅 ---------------- */
+
+let lobbyActive = false;
+let lobbyStartAt: number | null = null;
+let lobbySelf: { ready: boolean; weapon: LobbyWeapon; cx: number; cy: number } | null = null;
+let lobbyPeer: { ready: boolean; weapon: LobbyWeapon; cx: number; cy: number } | null = null;
+let lobbyRemoteHost: { ready?: boolean; weapon?: string; cx?: number; cy?: number } | null = null;
+let lobbyAcc = 0;
+let guestWeapon: LobbyWeapon = 'railgun';
+let panelSent: boolean | null = null;
+
+const coop = new CoopLobby({
+  onReady: (ready) => {
+    if (!lobbySelf) return;
+    lobbySelf.ready = ready;
+    renderCoopLobby();
+  },
+  onWeapon: (weapon) => {
+    if (!lobbySelf) return;
+    lobbySelf.weapon = weapon;
+    renderCoopLobby();
+  },
+  onLeave: () => leaveCoop(),
+  onMove: (nx, ny) => {
+    if (!lobbySelf) return;
+    lobbySelf.cx = nx;
+    lobbySelf.cy = ny;
+  },
+});
+
+function renderCoopLobby(): void {
+  if (!lobbyActive || !lobbySelf) return;
+  const self: LobbyCard = {
+    weapon: lobbySelf.weapon,
+    ready: lobbySelf.ready,
+    cx: lobbySelf.cx,
+    cy: lobbySelf.cy,
+  };
+  let peer: LobbyCard | null = null;
+  if (p2pRole === 'host') {
+    if (lobbyPeer) peer = { ...lobbyPeer };
+  } else if (lobbyRemoteHost) {
+    peer = {
+      weapon: lobbyRemoteHost.weapon === 'shield' ? 'shield' : 'railgun',
+      ready: !!lobbyRemoteHost.ready,
+      cx: typeof lobbyRemoteHost.cx === 'number' ? lobbyRemoteHost.cx : 0.5,
+      cy: typeof lobbyRemoteHost.cy === 'number' ? lobbyRemoteHost.cy : 0.5,
+    };
+  }
+  coop.update({ role: p2pRole, self, peer, countdown: lobbyStartAt !== null });
+  if (peer) coop.setPeerCursor(peer.cx, peer.cy);
+}
+
+function enterCoopLobby(): void {
+  if (lobbyActive) return;
+  lobbyActive = true;
+  lobbyStartAt = null;
+  lobbyAcc = 0;
+  lobbySelf = { ready: false, weapon: selectedWeapon, cx: 0.5, cy: 0.5 };
+  lobbyPeer = null;
+  lobbyRemoteHost = null;
+  panelSent = null;
+  hideGuestWait();
+  lobby.classList.add('hidden');
+  screenTitle.classList.add('hidden');
+  prepScreen.classList.add('hidden');
+  screenEnd.classList.add('hidden');
+  hudEl.classList.remove('on');
+  coop.show(p2pRole, selectedWeapon);
+  renderCoopLobby();
+}
+
+function leaveCoop(): void {
+  lobbyActive = false;
+  lobbyStartAt = null;
+  coop.hide();
+  if (p2p) p2p.close();
+  p2p = null;
+  p2pReady = false;
+  p2pSnap = null;
+  p2pInput = null;
+  p2pMode = false;
+  p2pRole = 'host';
+  world = null;
+  hudEl.classList.remove('on');
+  screenTitle.classList.remove('hidden');
+  setNetStatus(null);
+}
+
+function updateCoopLobby(dt: number): void {
+  if (!p2p || !p2pReady || !lobbySelf) return;
+  lobbyAcc += dt;
+  if (lobbyAcc < 1 / 30) return;
+  lobbyAcc = 0;
+  if (p2pRole === 'host') {
+    p2p.sendState({ t: 'lobby', host: lobbySelf, guest: lobbyPeer });
+    maybeStartCoop();
+  } else {
+    p2p.sendInput({
+      t: 'lobby',
+      ready: lobbySelf.ready,
+      weapon: lobbySelf.weapon,
+      cx: lobbySelf.cx,
+      cy: lobbySelf.cy,
+    });
+  }
+}
+
+/** 双方都点了「出发」才开始，留一点时间让对面看到「即将开始」 */
+function maybeStartCoop(): void {
+  const both = !!lobbySelf?.ready && !!lobbyPeer?.ready;
+  if (!both) {
+    if (lobbyStartAt !== null) {
+      lobbyStartAt = null;
+      renderCoopLobby();
+    }
+    return;
+  }
+  const now = performance.now();
+  if (lobbyStartAt === null) {
+    lobbyStartAt = now + 900;
+    renderCoopLobby();
+  } else if (now >= lobbyStartAt) {
+    startCoopGame();
+  }
+}
+
+function startCoopGame(): void {
+  if (!lobbySelf) return;
+  guestWeapon = lobbyPeer?.weapon === 'shield' ? 'shield' : 'railgun';
+  selectedWeapon = lobbySelf.weapon;
+  lobbyActive = false;
+  lobbyStartAt = null;
+  coop.hide();
+  startGame('guard');
 }
 
 /** 房主页面切到后台时浏览器会暂停 rAF，世界就冻住了 —— 明确提示，别让人以为卡死 */
@@ -641,12 +842,18 @@ document.addEventListener('visibilitychange', () => {
 /** 房主世界里给客人留一个玩家位（联机前不占位） */
 function ensureHostPlayers(): void {
   if (!world || p2pRole !== 'host') return;
-  while (world.players.length < 2) world.addPlayer('railgun');
+  while (world.players.length < 2) world.addPlayer(guestWeapon);
 }
 
 /** 客人收到第一帧快照：以房主世界为准，本地只做插值渲染 */
 function enterGuestWorld(): void {
   if (world) return;
+  // 房主开始了：关掉准备大厅，进入战场
+  lobbyActive = false;
+  lobbyStartAt = null;
+  coop.hide();
+  panelSent = null;
+  lastAppliedSnap = null;
   world = new World('guard', 'railgun');
   world.localIndex = 1;
   ended = false;
@@ -662,6 +869,10 @@ function enterGuestWorld(): void {
   screenEnd.classList.add('hidden');
   hudEl.classList.add('on');
   setPaused(false);
+  // 客人也能开成长面板：购买发给房主执行
+  panel.setBuyHandler((kind, id, skillId) => {
+    p2p?.sendInput({ t: 'buy', kind, id, skillId });
+  });
   if (p2pSnap) applySnapshot(world, p2pSnap);
   camera.update(world.player.pos, 0, true);
   hideGuestWait();
@@ -763,10 +974,12 @@ let acc = 0;
 const STEP = 1 / 60;
 
 function frame(now: number): void {
-  
-requestAnimationFrame(frame);
+  requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
+
+  // 大厅阶段还没有世界，但它也要跑（双光标、双方就绪）
+  if (lobbyActive) updateCoopLobby(dt);
 
   if (!world) return;
 
@@ -801,11 +1014,26 @@ requestAnimationFrame(frame);
         }
       }
     } else {
-      if (edges.panel) hud.toast('联机中暂未开放成长面板');
+      // Tab 开面板：客人本地不跑模拟，得自己切换状态再告诉房主
+      if (edges.panel) {
+        edges.panel = false;
+        const gp = world.player;
+        gp.panelOpen = !gp.panelOpen;
+      }
       // 不要在这里清边沿：只有真正发出去的那一刻才清，
       // 否则 60fps 下按在「不发送」的那一帧会被吞掉。
       const inp = buildInput(false);
-      if (p2pSnap) applySnapshot(world, p2pSnap);
+      // 只在收到新快照时重建世界对象；每帧重建纯属给 GC 添堵
+      if (p2pSnap && p2pSnap !== lastAppliedSnap) {
+        lastAppliedSnap = p2pSnap;
+        applySnapshot(world, p2pSnap);
+      }
+      // 面板开关是离散状态，变化即发，不必挤进 30Hz 输入
+      const gpOpen = world.player.panelOpen;
+      if (panelSent !== gpOpen) {
+        panelSent = gpOpen;
+        p2p?.sendInput({ t: 'ctl', panel: gpOpen });
+      }
       if (p2p && p2pReady) {
         p2pSendAcc += dt;
         if (p2pSendAcc >= 1 / 30) {
@@ -813,7 +1041,7 @@ requestAnimationFrame(frame);
           if (DEBUG && (inp.firePressed || inp.skillQ || inp.rollPressed)) {
             console.log('[net] 客人发出边沿', inp.firePressed ? 'fire' : inp.skillQ ? 'Q' : 'roll');
           }
-          p2p.sendInput({ t: 'input', snap: { ...inp, panel: false } });
+          p2p.sendInput({ t: 'input', snap: inp });
           // 清的是按键边沿表（edges），不是快照；否则技能键会被持续发送
           clearEdges();
         }

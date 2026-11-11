@@ -30,6 +30,10 @@ export function serializeWorld(w: World): unknown {
       alive: p.alive,
       coins: p.coins,
       skillCd: p.skillCd.slice(),
+      mode: p.mode,
+      throwTarget: p.throwTarget ? { x: p.throwTarget.x, y: p.throwTarget.y } : null,
+      aiming: p.aiming,
+      leapTo: { x: p.leapTo.x, y: p.leapTo.y },
     })),
     enemies: w.enemies.map((e) => ({
       id: e.id,
