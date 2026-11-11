@@ -492,6 +492,8 @@ function resize(): void {
     Math.floor(Math.min(window.innerWidth / VIEW.w, window.innerHeight / VIEW.h)),
   );
   document.documentElement.style.setProperty('--s', String(scale));
+  // 后备画布按整数倍放大：位移用设备像素表达，亚像素移动才不会卡成 1 逻辑像素
+  renderer.setScale(scale);
 }
 window.addEventListener('resize', resize);
 resize();

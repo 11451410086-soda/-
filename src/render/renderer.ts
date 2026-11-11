@@ -82,6 +82,8 @@ export class Renderer {
   numbers: FloatText[] = [];
   rings: Ring[] = [];
   t = 0;
+  /** 画布放大倍数：按整数倍把逻辑分辨率放大到设备像素，位移才不会卡在 1 逻辑像素上 */
+  private scale = 1;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -89,6 +91,17 @@ export class Renderer {
     this.ctx.imageSmoothingEnabled = false;
     this.bg = this.bakeBackground();
     this.vignette = this.bakeVignette();
+  }
+
+  /** 按整数倍放大后备画布（CSS 尺寸不变），让亚像素位移能落在设备像素上 */
+  setScale(s: number): void {
+    const next = Math.max(1, Math.floor(s));
+    if (next === this.scale && this.canvas.width === VIEW.w * next) return;
+    this.scale = next;
+    this.canvas.width = VIEW.w * next;
+    this.canvas.height = VIEW.h * next;
+    // 改尺寸会重置画布状态
+    this.ctx.imageSmoothingEnabled = false;
   }
 
   /* ================= 背景烘焙 ================= */
@@ -482,14 +495,16 @@ export class Renderer {
     const t = this.t;
 
     ctx.save();
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#05070c';
     ctx.fillRect(0, 0, VIEW.w, VIEW.h);
 
     const sh = world.shake;
-    const sx = Math.round((Math.random() - 0.5) * sh);
-    const sy = Math.round((Math.random() - 0.5) * sh);
-    ctx.translate(-Math.round(cam.x) + sx, -Math.round(cam.y) + sy);
+    const sx = (Math.random() - 0.5) * sh;
+    const sy = (Math.random() - 0.5) * sh;
+    // 相机不再取整：放大后的画布上可以做亚像素滚动
+    ctx.translate(-cam.x + sx, -cam.y + sy);
 
     ctx.drawImage(this.bg, 0, 0);
 
@@ -766,7 +781,7 @@ export class Renderer {
     ctx.drawImage(img, c.pos.x - rad, baseY - spr.h * 0.55 - rad);
     ctx.restore();
 
-    ctx.drawImage(spr.img, Math.round(c.pos.x - spr.w / 2), Math.round(baseY - spr.h + bob));
+    ctx.drawImage(spr.img, c.pos.x - spr.w / 2, baseY - spr.h + bob);
 
     // 血条直接画在水晶上方
     const frac = Math.max(0, c.hp / c.maxHp);
@@ -784,7 +799,7 @@ export class Renderer {
 
     if (c.hitFlash > 0.02) {
       ctx.globalAlpha = c.hitFlash * 0.85;
-      ctx.drawImage(spr.flash, Math.round(c.pos.x - spr.w / 2), Math.round(baseY - spr.h + bob));
+      ctx.drawImage(spr.flash, c.pos.x - spr.w / 2, baseY - spr.h + bob);
       ctx.globalAlpha = 1;
     }
   }
@@ -802,8 +817,8 @@ export class Renderer {
     // 蓄力预警扇形（画在实体下面）
     this.drawFanTelegraph(ctx, e);
 
-    const x = Math.round(e.pos.x - spr.w / 2);
-    const y = Math.round(e.pos.y + 4 - spr.h);
+    const x = e.pos.x - spr.w / 2;
+    const y = e.pos.y + 4 - spr.h;
 
     // 影子
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -908,7 +923,7 @@ export class Renderer {
     ctx.drawImage(pg, p.pos.x - 20, p.pos.y - 22);
     ctx.restore();
 
-    ctx.drawImage(spr.img, Math.round(p.pos.x - spr.w / 2), Math.round(p.pos.y + 5 - spr.h - lift));
+    ctx.drawImage(spr.img, p.pos.x - spr.w / 2, p.pos.y + 5 - spr.h - lift);
     if (lift > 1) {
       ctx.globalAlpha = 0.25;
       ctx.beginPath();
@@ -1052,7 +1067,7 @@ export class Renderer {
 
     if (p.hurtFlash > 0.02) {
       ctx.globalAlpha = p.hurtFlash * 0.8;
-      ctx.drawImage(spr.flash, Math.round(p.pos.x - spr.w / 2), Math.round(p.pos.y + 5 - spr.h));
+      ctx.drawImage(spr.flash, p.pos.x - spr.w / 2, p.pos.y + 5 - spr.h);
     }
     ctx.globalAlpha = 1;
   }
