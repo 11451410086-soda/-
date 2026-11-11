@@ -48,6 +48,17 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     p.coins = pw.coins;
     p.hurtFlash = pw.hurtFlash ?? 0;
     p.invuln = pw.invuln ?? 0;
+    p.eggTotal = pw.eggTotal ?? 0;
+    p.leapHung = pw.leapHung ?? 0;
+    // 塑造等级：原地合并，不在每拍分配新对象
+    if (pw.shapes) {
+      for (const key in p.shapes) {
+        if (!(key in pw.shapes)) delete p.shapes[key];
+      }
+      for (const key in pw.shapes) {
+        p.shapes[key] = pw.shapes[key];
+      }
+    }
     for (let i = 0; i < p.skillCd.length; i++) p.skillCd[i] = pw.skillCd[i] ?? 0;
     // 预瞄：客人本地不跑模拟，这些状态只能由房主带过来
     p.mode = (pw.mode as Player['mode']) ?? 'none';

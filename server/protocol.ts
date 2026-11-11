@@ -78,6 +78,10 @@ export interface PlayerWire {
   /** 受击红屏 / 无敌闪烁：客人端也要有 */
   hurtFlash?: number;
   invuln?: number;
+  /** 武器塑造等级：客人开成长面板、画地面形态全靠它 */
+  shapes?: Record<string, number>;
+  eggTotal?: number;
+  leapHung?: number;
   /** 预瞄状态：客人靠它画技能/武器预览（服务器权威模式可缺省） */
   mode?: string;
   throwTarget?: { x: number; y: number } | null;
