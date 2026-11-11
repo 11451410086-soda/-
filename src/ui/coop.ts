@@ -107,7 +107,7 @@ export class CoopLobby {
       guest: this.root.querySelector('.coop-cursor[data-side="guest"]') as HTMLElement,
     };
 
-    this.readyBtn.addEventListener('click', () => this.handlers.onReady(true));
+    this.readyBtn.addEventListener('click', () => this.handlers.onReady(!this.self.ready));
     (this.root.querySelector('#coop-leave') as HTMLButtonElement).addEventListener('click', () =>
       this.handlers.onLeave(),
     );
@@ -126,12 +126,6 @@ export class CoopLobby {
       this.self.cy = ny;
       this.placeCursor(this.role, nx, ny);
       this.handlers.onMove(nx, ny);
-    });
-
-    // 右键取消自己的准备 / 出发
-    this.root.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      this.handlers.onReady(false);
     });
   }
 
@@ -219,7 +213,9 @@ export class CoopLobby {
     this.roomCode.textContent = view.room;
 
     this.title.textContent = view.phase === 'ready' ? '准备房间' : '选择武器';
-    this.readyBtn.textContent = view.phase === 'ready' ? '准 备' : '出 发';
+    const normalLabel = view.phase === 'ready' ? '准 备' : '出 发';
+    const cancelLabel = view.phase === 'ready' ? '取消准备' : '取消出发';
+    this.readyBtn.textContent = view.self.ready ? cancelLabel : normalLabel;
     this.readyBtn.classList.toggle('ready', view.self.ready);
 
     this.renderCard(view.role, view.self, true, true, view.phase);
@@ -238,14 +234,14 @@ export class CoopLobby {
       this.sub.classList.remove('good');
     } else if (view.phase === 'ready') {
       this.sub.textContent = view.self.ready
-        ? '已准备，等对方准备…'
+        ? '已准备，等对方…（再点按钮可取消）'
         : view.peer.ready
           ? '对方已准备，等你点「准备」'
           : '把邀请链接发给朋友，两人都准备后开始';
       this.sub.classList.toggle('good', view.peer.ready && !view.self.ready);
     } else {
       this.sub.textContent = view.self.ready
-        ? '已出发，等对方…'
+        ? '已出发，等对方…（再点按钮可取消）'
         : view.peer.ready
           ? '对方已出发，等你点「出发」'
           : '各自选武器，两个人都点「出发」就开始';
