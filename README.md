@@ -2,7 +2,7 @@
 
 域卫在「净化之路」上阻击域兽、守住净化水晶与升华水晶的 PvE 防守游戏。
 
-当前版本是**可玩骨架**：一名英雄（三华求御）、一条净化之路、三种域兽、局内成长面板。联机是后续阶段，但代码结构已经为它留好路。
+当前版本是**可玩骨架**：一名英雄（三华求御）、一条净化之路、三种域兽、局内成长面板。**双人联机已经可用**（P2P，房主权威）。
 
 ## 运行
 
@@ -82,9 +82,52 @@ src/
 - 加成长节点：`GROWTH_NODES` 里加一条数据，并在 `src/sim/growth.ts` 与 `world.ts` 里接上对应效果。
 - 加域兽：`ENEMIES` 里加一条，`render/sprites.ts` 加一套精灵，`drawEnemy` 里补一个分支。
 
+## 联机与发布
+
+### 双人联机怎么走
+
+1. 房主：主菜单「联 机」→「创建房间」→「复制链接」
+2. 关掉弹窗 →「开始游戏」→「出 发」→ 进入准备大厅
+3. 客人打开链接 → 进入同一个准备大厅
+4. **两个人都在大厅点「出发」** 才开局（右键取消）；武器各自选
+
+联机是 P2P（WebRTC）：世界跑在房主浏览器里，快照 30Hz 发给客人，客人只回传输入。服务器只做信令转发，连上之后不再参与。
+
+### 三种分发方式
+
+| 方式 | 适合 | 命令 / 操作 |
+|---|---|---|
+| Render（现状） | 私测 | push 后在面板点 Manual Deploy |
+| GitHub Pages | 公开 demo，免费、秒开、push 自动部署 | 仓库 Settings → Pages → Source 选 **GitHub Actions** |
+| itch.io | 给人下载/试玩 | `npm run package:itch` 生成 `release/jieyu-itch.zip` |
+
+页面放静态托管时，信令还在 Render，构建时必须指定地址：
+
+```bash
+VITE_SIGNAL_URL=wss://jie-yu-jing-hua.onrender.com npm run build
+```
+
+也可以用运行时参数覆盖：`?signal=wss://...`（分享出去的链接会自动带上）。
+
+信令连接自带重试：Render 免费实例休眠后第一次连不上，会显示「正在重试…」并每 2.5 秒重连。
+
+### TURN（跨网兜底）
+
+默认用公共 openrelay（不稳定）。要更可靠就自建 coturn 或用付费 TURN，构建时注入：
+
+```bash
+VITE_TURN_URL=turn:your.turn.server:3478 VITE_TURN_USER=user VITE_TURN_PASS=pass npm run build
+```
+
+### 已知限制
+
+- **房主页面必须在前台**：浏览器会暂停后台标签的渲染循环，切走世界就冻住
+- 客人端只收到 30Hz 快照 + 插值，不是 60Hz 模拟
+- itch.io 的页面跑在 iframe 里，跨网分享链接不如独立域名可靠，建议用房间号加入
+
 ## 下一步
 
 1. 更多英雄（承伤 / 辅助定位）与各自的成长面板
 2. 域兽领主（Boss 波）、更多域的关卡
 3. 音效（WebAudio 合成）
-4. 联机：把 `sim` 搬到 Node + `ws`，客户端只发输入、收快照
+4. 公开联机：把现有的 `server/index.ts` 权威模式打磨成正式服务（陌生人匹配 / 防作弊 / 存档）

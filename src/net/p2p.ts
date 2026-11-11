@@ -30,24 +30,44 @@ export interface P2POptions {
   debug?: boolean;
 }
 
-/** STUN 免费；TURN 用 openrelay 公共节点兜底对称 NAT（未必长期可用，但不影响直连） */
+/** 构建时注入的 TURN（VITE_TURN_URL/USER/PASS），没有就用公共 openrelay 兜底 */
+function env(name: string): string {
+  const meta = import.meta as unknown as { env?: Record<string, string | undefined> };
+  return meta.env?.[name] ?? '';
+}
+
+function envTurn(): RTCIceServer[] {
+  const urls = env('VITE_TURN_URL')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (urls.length === 0) return [];
+  return [{ urls, username: env('VITE_TURN_USER'), credential: env('VITE_TURN_PASS') }];
+}
+
+const STUN_URLS = [
+  'stun:stun.cloudflare.com:3478',
+  'stun:stun.l.google.com:19302',
+  'stun:stun1.l.google.com:19302',
+];
+
+const OWN_TURN = envTurn();
+
 const ICE_SERVERS: RTCIceServer[] = [
-  {
-    urls: [
-      'stun:stun.cloudflare.com:3478',
-      'stun:stun.l.google.com:19302',
-      'stun:stun1.l.google.com:19302',
-    ],
-  },
-  {
-    urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:443',
-      'turn:openrelay.metered.ca:443?transport=tcp',
-    ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
+  { urls: STUN_URLS },
+  ...(OWN_TURN.length > 0
+    ? OWN_TURN
+    : [
+        {
+          urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp',
+          ],
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        } satisfies RTCIceServer,
+      ]),
 ];
 
 const JOIN_RETRY_MS = 1200;
@@ -69,6 +89,7 @@ export class P2P {
   private connectTimer: number | null = null;
   private lastOfferAt = 0;
   private lastFailAt = 0;
+  private wsRetry: number | null = null;
 
   constructor(opts: P2POptions) {
     this.opts = opts;
@@ -84,6 +105,11 @@ export class P2P {
 
   start(): void {
     this.opts.onStatus?.('connecting', '正在连接信令服务器…');
+    this.connectSignal();
+  }
+
+  /** 信令连接：失败自动重试（Render 免费实例会休眠，第一次常常连不上） */
+  private connectSignal(): void {
     const ws = new WebSocket(this.opts.signalUrl);
     this.ws = ws;
 
@@ -93,6 +119,7 @@ export class P2P {
         'waiting',
         this.opts.role === 'host' ? '等待朋友加入…' : '正在连接房主…',
       );
+      if (this.joinTimer !== null) window.clearInterval(this.joinTimer);
       // 客人没连上就不断重发 join，房主收到后才发 offer
       this.joinTimer = window.setInterval(() => {
         if (!this.connected) this.sendSignal({ t: 'p2p-join', room: this.opts.room });
@@ -100,10 +127,23 @@ export class P2P {
     };
 
     ws.onmessage = (ev) => this.onSignal(ev);
-    ws.onerror = () => this.opts.onStatus?.('failed', '信令服务器连接失败');
-    ws.onclose = () => {
-      if (!this.closed && !this.connected) this.fail('信令服务器断开');
+    ws.onerror = () => {
+      /* 具体处理放在 onclose */
     };
+    ws.onclose = () => {
+      // 数据通道已经通了就别管信令了，游戏不受影响
+      if (this.closed || this.connected) return;
+      this.opts.onStatus?.('connecting', '信令服务器无响应，正在重试…');
+      this.scheduleSignalRetry();
+    };
+  }
+
+  private scheduleSignalRetry(): void {
+    if (this.wsRetry !== null) return;
+    this.wsRetry = window.setTimeout(() => {
+      this.wsRetry = null;
+      if (!this.closed && !this.connected) this.connectSignal();
+    }, 2500);
   }
 
   /** 房主 → 客人：世界快照（不可靠通道，丢帧无妨） */
@@ -121,8 +161,10 @@ export class P2P {
     this.connected = false;
     if (this.joinTimer !== null) window.clearInterval(this.joinTimer);
     if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
+    if (this.wsRetry !== null) window.clearTimeout(this.wsRetry);
     this.joinTimer = null;
     this.connectTimer = null;
+    this.wsRetry = null;
     this.stateDc?.close();
     this.inputDc?.close();
     this.pc?.close();

@@ -55,10 +55,18 @@ let roomCode = "";
 
 function onlineUrl(code: string, role: "host" | "guest"): string {
   const base = location.origin + location.pathname;
-  return base + "?p2p=1&room=" + code + "&role=" + role;
+  const q = new URLSearchParams();
+  q.set("p2p", "1");
+  q.set("room", code);
+  q.set("role", role);
+  // 页面和信令分开部署时（静态托管 + Render 信令），链接要把信令地址带上
+  const sig = PARAMS.get("signal");
+  if (sig) q.set("signal", sig);
+  return base + "?" + q.toString();
 }
 
 document.getElementById("btn-online")!.addEventListener("click", () => {
+  warmSignal();
   lobby.classList.remove("hidden");
   lobbyTip.textContent = "创建一个房间，把链接发给朋友即可";
 });
@@ -590,10 +598,27 @@ function applyGuestBuy(kind: string, id: string, skillId?: string): void {
 }
 
 function signalUrl(): string {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  // 开发模式（vite 5173）连独立的 3001；部署后同源
-  const host = location.port === '5173' ? location.hostname + ':3001' : location.host;
-  return proto + '//' + host + '/ws?room=' + p2pRoom;
+  return signalBase() + '/ws?room=' + p2pRoom;
+}
+
+/** 信令服务器基址：?signal= > 构建注入 VITE_SIGNAL_URL > 同源（开发模式连 3001） */
+function signalBase(): string {
+  const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+  const raw = PARAMS.get('signal') || env.VITE_SIGNAL_URL || '';
+  if (raw) return raw.replace(/^http/, 'ws').replace(/\/+$/, '');
+  if (location.port === '5173') {
+    return (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.hostname + ':3001';
+  }
+  return (location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host;
+}
+
+/** 先把休眠的免费实例戳醒，免得建房时卡在「连接信令服务器」 */
+let signalWarmed = false;
+function warmSignal(): void {
+  if (signalWarmed) return;
+  signalWarmed = true;
+  const http = signalBase().replace(/^ws/, 'http');
+  void fetch(http + '/', { mode: 'no-cors', cache: 'no-store' }).catch(() => undefined);
 }
 
 function startP2P(room: string, role: 'host' | 'guest'): void {
@@ -1164,6 +1189,7 @@ if (ONLINE) {
 }
 
 if (p2pMode) {
+  warmSignal();
   if (p2pRole === 'guest') {
     // 客人：直接等房主，别让「开始游戏」开出单机世界
     screenTitle.classList.add('hidden');

@@ -1777,3 +1777,44 @@ body {
   background: rgba(6, 12, 20, 0.82);
   border: 1px solid currentColor;
 }
+
+/* ---------- 联机说明 ---------- */
+
+.lobby-help {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 180, 255, 0.14);
+  background: rgba(8, 16, 28, 0.55);
+  font-size: 12.5px;
+  color: #8fa6bd;
+  line-height: 2;
+}
+
+.lobby-help b {
+  display: block;
+  margin-bottom: 6px;
+  color: #bcd6ea;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.lobby-help i {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(127, 216, 255, 0.15);
+  color: #8fd6ff;
+  font-style: normal;
+  font-size: 10.5px;
+  margin-right: 8px;
+}
+
+.lobby-help-note {
+  margin-top: 4px;
+  font-size: 11.5px;
+  opacity: 0.65;
+}
