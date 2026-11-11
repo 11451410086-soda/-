@@ -14,11 +14,17 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     const p = world.players[idx];
     const pw = wire.players[idx];
     if (!pw) continue;
-    (p as unknown as { tx: number; ty: number }).tx = pw.x;
-    (p as unknown as { tx: number; ty: number }).ty = pw.y;
+    const pn = p as unknown as { px?: number; py?: number; tx?: number; ty?: number };
+    // 上一拍的权威位置留作插值起点
+    pn.px = pn.tx ?? pw.x;
+    pn.py = pn.ty ?? pw.y;
+    pn.tx = pw.x;
+    pn.ty = pw.y;
     if (!(p as unknown as { init?: boolean }).init) {
       p.pos.x = pw.x;
       p.pos.y = pw.y;
+      pn.px = pw.x;
+      pn.py = pw.y;
       (p as unknown as { init?: boolean }).init = true;
     }
     p.aim = pw.aim;
@@ -106,8 +112,11 @@ export function applySnapshot(world: World, wire: WorldWire): void {
       } as unknown as EnemyNet;
     }
     ex.kind = e.kind as Enemy['kind'];
-    ex.tx = e.x;
-    ex.ty = e.y;
+    const ne = ex as unknown as { px?: number; py?: number; tx?: number; ty?: number };
+    ne.px = ne.tx ?? e.x;
+    ne.py = ne.ty ?? e.y;
+    ne.tx = e.x;
+    ne.ty = e.y;
     ex.hp = e.hp;
     ex.maxHp = e.maxHp;
     ex.hitFlash = e.hitFlash;
@@ -124,7 +133,7 @@ export function applySnapshot(world: World, wire: WorldWire): void {
 
   world.lasers = wire.lasers.map((l) => ({
     pos: { x: l.x, y: l.y },
-    vel: { x: 0, y: 0 },
+    vel: { x: l.vx ?? 0, y: l.vy ?? 0 },
     angle: l.angle,
     damage: 0,
     pierce: 0,
@@ -159,7 +168,7 @@ export function applySnapshot(world: World, wire: WorldWire): void {
   world.shots = wire.shots.map((s) => ({
     tag: 'flight',
     pos: { x: s.x, y: s.y },
-    vel: { x: 0, y: 0 },
+    vel: { x: s.vx ?? 0, y: s.vy ?? 0 },
     radius: s.radius,
     dmg: 0,
     life: 1,
@@ -187,7 +196,46 @@ export function applySnapshot(world: World, wire: WorldWire): void {
   }
 }
 
-/** 每帧朝目标位置靠拢（不分配新对象，帧率友好）。skipLocal=true 时本地玩家交给预测处理 */
+/** 客人端：弹道在两次快照之间按速度外推，才能每帧都在飞（否则 30Hz 瞬移） */
+export function extrapolateWorld(world: World, dt: number): void {
+  for (const l of world.lasers) {
+    l.pos.x += l.vel.x * dt;
+    l.pos.y += l.vel.y * dt;
+  }
+  for (const s of world.shots) {
+    s.pos.x += s.vel.x * dt;
+    s.pos.y += s.vel.y * dt;
+  }
+}
+
+/** 线性插值：在上一拍和这一拍之间按 alpha 取位置，30Hz 数据也能画出匀速运动 */
+export function interpolateWorld(world: World, alpha: number, skipLocal = false): void {
+  const a = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
+  for (let i = 0; i < world.players.length; i++) {
+    if (skipLocal && i === world.localIndex) continue;
+    const p = world.players[i];
+    const t = p as unknown as { px?: number; py?: number; tx?: number; ty?: number };
+    if (t.tx === undefined) continue;
+    if (t.px === undefined) {
+      p.pos.x = t.tx;
+      p.pos.y = t.ty!;
+      continue;
+    }
+    p.pos.x = t.px + (t.tx - t.px) * a;
+    p.pos.y = t.py! + (t.ty! - t.py!) * a;
+  }
+  for (const e of world.enemies) {
+    const t = e as unknown as { px?: number; py?: number; tx?: number; ty?: number };
+    if (t.tx === undefined) continue;
+    if (t.px === undefined) {
+      e.pos.x = t.tx;
+      e.pos.y = t.ty!;
+      continue;
+    }
+    e.pos.x = t.px + (t.tx - t.px) * a;
+    e.pos.y = t.py! + (t.ty! - t.py!) * a;
+  }
+}
 export function smoothWorld(world: World, dt: number, interval = 0.033, skipLocal = false): void {
   const k = Math.min(1, dt / Math.max(0.016, interval * 1.1));
   for (let i = 0; i < world.players.length; i++) {

@@ -102,6 +102,9 @@ export interface LaserWire {
   radius: number;
   orb: boolean;
   lift: number;
+  /** 速度：客人端用来在两次快照之间外推，让弹道每帧都在动 */
+  vx?: number;
+  vy?: number;
 }
 
 export interface ZoneWire {
@@ -117,6 +120,8 @@ export interface ShotWire {
   x: number;
   y: number;
   radius: number;
+  vx?: number;
+  vy?: number;
 }
 
 export interface BottleWire {

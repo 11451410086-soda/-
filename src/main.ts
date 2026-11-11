@@ -6,7 +6,7 @@ import { Camera, Renderer } from './render/renderer';
 import { NetClient } from './net/client';
 import { P2P } from './net/p2p';
 import { serializeWorld } from './net/snapshot';
-import { applySnapshot, smoothWorld } from './net/apply';
+import { applySnapshot, extrapolateWorld, interpolateWorld, smoothWorld } from './net/apply';
 import type { InputSnapshot } from './shared/types';
 import type { WorldWire } from '../server/protocol';
 import type { WorldEvent } from './sim/types';
@@ -1004,6 +1004,14 @@ let snapCount = 0;
 /** 实测快照间隔（秒），客人插值用；房主卡的时候它会变大，平滑跟着放慢，避免橡皮筋 */
 let snapInterval = 1 / 30;
 let lastSnapAt = 0;
+/** 最近一次应用快照的时间，插值用 */
+let snapAt = 0;
+/** 诊断：弹道每帧是否在动 */
+let projLastX: number | null = null;
+let projLastY = 0;
+let projFrames = 0;
+let projMoved = 0;
+let projLogAt = 0;
 let tApply = 0;
 let tDraw = 0;
 let tHud = 0;
@@ -1156,6 +1164,7 @@ function frame(now: number): void {
         lastAppliedSnap = p2pSnap;
         const tAp = performance.now();
         applySnapshot(world, p2pSnap);
+        snapAt = tAp;
         tApply += performance.now() - tAp;
       }
       // 面板开关是离散状态，变化即发，不必挤进 30Hz 输入
@@ -1179,7 +1188,36 @@ function frame(now: number): void {
       // 客人不跑模拟，但自己的移动必须在本地预测，否则手感到不了 30Hz 快照的延迟
       const me = world.player;
       if (me.alive && !me.panelOpen) world.predictPlayerMove(me, inp, dt);
-      smoothWorld(world, dt, snapInterval, true);
+      // 其他人/怪：在上一拍和这一拍之间线性插值，匀速、不跳
+      const nowMs = performance.now();
+      const alpha = (nowMs - snapAt) / Math.max(0.016, snapInterval);
+      interpolateWorld(world, alpha, true);
+      // 弹道（激光/飞行物）没有稳定 id，不做插值，改为按快照里的速度每帧外推
+      extrapolateWorld(world, dt);
+      if (DEBUG) {
+        const l0 = world.lasers[0];
+        if (l0) {
+          if (projLastX !== null) {
+            projFrames++;
+            if (Math.hypot(l0.pos.x - projLastX, l0.pos.y - projLastY) > 0.05) projMoved++;
+          }
+          projLastX = l0.pos.x;
+          projLastY = l0.pos.y;
+        } else {
+          projLastX = null;
+        }
+        if (performance.now() - projLogAt > 1000) {
+          projLogAt = performance.now();
+          if (projFrames > 0) {
+            console.log(
+              '[net] 弹道动帧 ' + projMoved + '/' + projFrames +
+                ' = ' + Math.round((projMoved / projFrames) * 100) + '%',
+            );
+          }
+          projFrames = 0;
+          projMoved = 0;
+        }
+      }
       // 软纠偏：小误差是网络延迟造成的（房主看到的是你 RTT 之前的位置），不要管；
       // 误差明显变大才慢慢拉回，特别大（传送/复活/状态不同）才直接对齐。
       const net2 = me as unknown as { tx?: number; ty?: number };
