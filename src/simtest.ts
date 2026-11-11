@@ -128,14 +128,14 @@ const input = {
   const w = makeWorld();
   w.wave.phase = 'intermission';
   w.wave.timer = 0.01;
-  w.updateWave(0.02, input);
+  w.updateWave(0.02, input.skip);
   check('准备期结束 → 开始第 1 波', w.wave.n === 1 && (w.wave.phase as string) === 'spawning');
 
   w.wave.phase = 'fighting';
   w.wave.queue = [];
   w.enemies.length = 0;
   const pts = w.player.points;
-  w.updateWave(0.016, input);
+  w.updateWave(0.016, input.skip);
   check(
     '清波 → 获得成长点并进入整备',
     w.player.points === pts + 2 && (w.wave.phase as string) === 'intermission',

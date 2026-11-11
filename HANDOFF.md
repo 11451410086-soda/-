@@ -44,11 +44,22 @@
 - `hurtFlash` / `invuln`：受伤红屏和无敌闪烁。
 - 弹道 `vx/vy`：见上面第 1 条。**新加任何「会动/会闪」的实体，先想清楚客人端怎么拿到它**，否则就是「房主有、客人没有」。
 
-### E. 房主切后台不停机- rAF 在后台标签会被暂停、`setTimeout` 会被节流到 1Hz，但 **MessageChannel 自调度不受影响**。
+### E. 房主切后台不停机
+- rAF 在后台标签会被暂停、`setTimeout` 会被节流到 1Hz，但 **MessageChannel 自调度不受影响**。
 - `hiddenLoop`：`port2.postMessage` 自循环，按 `performance.now()` **自己限速 60Hz**（不限速会跑出 15 万 tick/s，世界 150 倍速，水晶瞬间被拆——踩过）。
 - 触发：`visibilitychange` 到 hidden、开局 `startCoopGame`（房主已在后台时）、收到客人 lobby 消息时唤醒。
 - 空闲自动停：大厅没在倒计时、对局已结束时停掉，避免自旋吃 CPU。
 - 前台 rAF 用 `if (!hiddenOn)` 兜底（有些环境 `document.hidden` 一直是 true，不能拿它当判断）。
+
+### F. 主机 / 客机身份约定（改玩法时最容易踩）
+- `this.player` = **`this.actor ?? this.players[localIndex]`**。`tick()` 在逐玩家循环里先 `this.actor = p` 再 `updatePlayer`，所以**玩家循环内部**用 `this.player` 是对的。
+- **循环外**（`updateEnemies / updateShots / updateZones / fanStrike / damagePlayer`…）`this.actor` 是 null，`this.player` 就是房主——凡是「对玩家生效」的逻辑必须**显式遍历 `this.players`** 或传目标玩家：
+  - `damagePlayer(amount, src, target?)` / `absorbHit(dmg, target?)` / `hasSkillShape(id, shapeId, pl?)` / `shapeLevel(id, pl?)` / `hasShape(w, id, pl?)`
+  - 已按玩家处理的：近战、扇形劈击、敌方子弹、毒雾区、升华水晶光环、波次奖励、拦路判定、索敌（`nearestPlayer`）
+- `addPlayer()` 是**浅拷贝**：`shapes` / `skillShapes` 必须各自新建，否则两人共享购买记录（踩过）。
+- 客人在协议里固定是 `players[1]`，房主 `players[0]`；客人端 `world.localIndex = 1`。
+- 客人面板走 `{t:'ctl', panel}`；输入快照里的 `panel` 边沿要在客人端清掉，别让房主再 toggle 一次。
+- 渲染：`playerLift(p)`、深度排序、小地图都要按「每个玩家」画，别拿 `world.player` 顶替。
 - **输入时序坑**：客人端 `buildInput` 不能每帧清边沿——只在「真正发出去」的那一刻 `clearEdges()`，否则 60fps 下按在未发送帧会被吞。
 - **成长面板**：客人 Tab 可以打开，购买通过 `{t:'buy'}` 发给房主，房主临时 `localIndex = 1` 代执行；`World.tick` 只有单人才会因为开面板暂停世界，联机只冻结开面板的那个人。
 - **作弊按钮**：联机时客人按作弊会发 `{t:'cheat'}` 让房主加钱（本地加会被快照覆盖）。

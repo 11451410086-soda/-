@@ -571,17 +571,21 @@ export class Renderer {
     for (const z of world.zones) this.drawZone(ctx, z, t);
     for (const c of world.crystals) this.drawCrystal(ctx, c, t);
 
-    // 按 y 排序绘制
+    // 按 y 排序绘制（联机：两个玩家各自插入到正确深度）
     const order = world.enemies.filter((e) => e.hp > 0).sort((a, b) => a.pos.y - b.pos.y);
-    let drewPlayer = false;
+    const alivePlayers = world.players.filter((p) => p.alive).sort((a, b) => a.pos.y - b.pos.y);
+    let pi = 0;
     for (const e of order) {
-      if (!drewPlayer && e.pos.y > world.player.pos.y) {
-        for (const pl of world.players) this.drawPlayer(ctx, world, pl, t);
-        drewPlayer = true;
+      while (pi < alivePlayers.length && alivePlayers[pi].pos.y <= e.pos.y) {
+        this.drawPlayer(ctx, world, alivePlayers[pi], t);
+        pi++;
       }
       this.drawEnemy(ctx, e, t);
     }
-    if (!drewPlayer) for (const pl of world.players) this.drawPlayer(ctx, world, pl, t);
+    while (pi < alivePlayers.length) {
+      this.drawPlayer(ctx, world, alivePlayers[pi], t);
+      pi++;
+    }
 
     for (const l of world.lasers) {
       if (l.lift) {
@@ -1245,10 +1249,12 @@ export class Renderer {
       ctx.fillRect(sx(e.pos.x) - 1, sy(e.pos.y) - 1, 2, 2);
     }
 
-    // 玩家
-    const p = world.player;
-    ctx.fillStyle = "rgba(240,250,255,1)";
-    ctx.fillRect(sx(p.pos.x) - 1.5, sy(p.pos.y) - 1.5, 3, 3);
+    // 玩家（联机：两个人的点都画）
+    for (const p of world.players) {
+      if (!p.alive) continue;
+      ctx.fillStyle = p === world.player ? 'rgba(240,250,255,1)' : 'rgba(255,210,120,1)';
+      ctx.fillRect(sx(p.pos.x) - 1.5, sy(p.pos.y) - 1.5, 3, 3);
+    }
 
     // 视野框
     const cx = cam.x;

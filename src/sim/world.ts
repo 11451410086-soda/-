@@ -218,7 +218,7 @@ export class World {
     this.updateBottles(dt);
     this.updateShots(dt);
     this.updateCrystals(dt);
-    this.updateWave(dt, list[0]);
+    this.updateWave(dt, list.some((i) => !!i?.skip));
 
     this.enemies = this.enemies.filter((e) => e.hp > 0);
   }
@@ -836,11 +836,13 @@ export class World {
       if (z.tick <= 0) {
         z.tick = z.poison ? (z.interval ?? 0.7) : BLACKHOLE.tickInterval;
         if (z.poison) {
-          const p = this.player;
-          if (p.alive && dist(p.pos, z.pos) <= z.radius + this.hero.radius) {
+          // 联机：毒雾要对每个站在里面的玩家结算
+          for (const p of this.players) {
+            if (!p.alive) continue;
+            if (dist(p.pos, z.pos) > z.radius + this.hero.radius) continue;
             let dmg = z.damage ?? 7;
             // 底盾：范围区落在脚下的圆形抵挡范围内 → 伤害减少
-            if (p.weaponId === 'shield' && this.hasShape('shield', 'ground')) {
+            if (p.weaponId === 'shield' && this.shapeLevel('ground', p) > 0) {
               if (dist(p.pos, z.pos) <= z.radius + SHIELD_WEAPON.groundRadius) {
                 dmg *= 1 - SHIELD_WEAPON.groundDR;
               }
@@ -857,10 +859,11 @@ export class World {
         this.pullEnemies(z);
       }
     }
-    if (this.hasSkillShape('blackhole', 'overflow')) {
-      const p = this.player;
+    // 溢出：站在黑洞范围区里的玩家获得提速（联机按玩家各自判定）
+    for (const pl of this.players) {
+      if (!this.hasSkillShape('blackhole', 'overflow', pl)) continue;
       const z = this.blackholeZone();
-      if (z && dist(p.pos, z.pos) <= z.radius) p.zoneBuffT = 0.2;
+      if (z && dist(pl.pos, z.pos) <= z.radius) pl.zoneBuffT = 0.2;
     }
     this.zones = this.zones.filter((z) => z.ttl > 0);
   }
@@ -1661,16 +1664,18 @@ export class World {
   /* ================= 水晶 ================= */
 
   updateCrystals(dt: number): void {
-    const p = this.player;
     for (const c of this.crystals) {
       c.hitFlash = Math.max(0, c.hitFlash - dt * 3.5);
       c.healPulse = Math.max(0, c.healPulse - dt * 1.5);
 
       /* 只有升华水晶提供恢复，净化水晶不回血 */
       if (!c.alive || c.kind !== 'ascension') continue;
-      if (p.alive && dist(p.pos, c.pos) <= CRYSTAL.auraRadius && p.hp < p.maxHp) {
-        p.hp = Math.min(p.maxHp, p.hp + CRYSTAL.auraRegen * dt);
-        c.healPulse = 0.6;
+      // 联机：光环对每个玩家都生效
+      for (const p of this.players) {
+        if (p.alive && dist(p.pos, c.pos) <= CRYSTAL.auraRadius && p.hp < p.maxHp) {
+          p.hp = Math.min(p.maxHp, p.hp + CRYSTAL.auraRegen * dt);
+          c.healPulse = 0.6;
+        }
       }
     }
   }
@@ -1685,12 +1690,13 @@ export class World {
 
   /* ================= 波次 ================= */
 
-  updateWave(dt: number, input: InputSnapshot): void {
+  updateWave(dt: number, skip: boolean): void {
     const w = this.wave;
 
     if (w.phase === 'intermission') {
       w.timer -= dt;
-      if (w.timer <= 0 || input.skip) this.startWave();
+      // 联机：任何一个人按空格都能提前开战
+      if (w.timer <= 0 || skip) this.startWave();
     } else if (w.phase === 'spawning') {
       w.spawnTimer -= dt;
       if (w.spawnTimer <= 0 && w.queue.length > 0) {
@@ -1720,8 +1726,11 @@ export class World {
 
   clearWave(): void {
     const w = this.wave;
-    this.player.points += POINTS_PER_WAVE;
-    this.player.coins += COIN_PER_WAVE;
+    // 联机：波次奖励是团队奖励，两个人都拿
+    for (const p of this.players) {
+      p.points += POINTS_PER_WAVE;
+      p.coins += COIN_PER_WAVE;
+    }
     this.events.push({ type: 'waveClear', n: w.n });
     // 无尽模式：没有通关，只有能撑多久
     w.phase = 'intermission';
@@ -1759,7 +1768,9 @@ export class World {
       maxHp: this.hero.maxHp,
       alive: true,
       ammo: RAIL_WEAPON.magSize,
+      // 这两个 map 必须各自一份：浅拷贝会让两个人共享购买记录
       shapes: {},
+      skillShapes: {},
       skillCd: [0, 0, 0],
       stoneT: 0,
       eggT: 0,
@@ -1790,8 +1801,9 @@ export class World {
 
   /* ================= 成长面板 ================= */
 
-  hasSkillShape(skillId: string, shapeId: string): boolean {
-    return this.player.skillShapes[skillId + '.' + shapeId] === true;
+  hasSkillShape(skillId: string, shapeId: string, pl?: Player): boolean {
+    const p = pl ?? this.player;
+    return p.skillShapes[skillId + '.' + shapeId] === true;
   }
 
   buySkillShape(skillId: string, shapeId: string, playerIndex = this.localIndex): boolean {
@@ -1821,12 +1833,14 @@ export class World {
     return WEAPON_SHAPES[this.player.weaponId] ?? [];
   }
 
-  hasShape(weaponId: string, shapeId: string): boolean {
-    return this.player.weaponId === weaponId && this.shapeLevel(shapeId) > 0;
+  hasShape(weaponId: string, shapeId: string, pl?: Player): boolean {
+    const p = pl ?? this.player;
+    return p.weaponId === weaponId && this.shapeLevel(shapeId, p) > 0;
   }
 
-  shapeLevel(id: string): number {
-    return this.player.shapes[id] ?? 0;
+  shapeLevel(id: string, pl?: Player): number {
+    const p = pl ?? this.player;
+    return p.shapes[id] ?? 0;
   }
 
   buyShape(id: string, playerIndex = this.localIndex): boolean {
