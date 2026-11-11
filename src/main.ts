@@ -1171,7 +1171,7 @@ function hiddenLoopStop(): void {
 if (hiddenChan) {
   // MessageChannel 自调度不会被后台节流，但也意味着没有节流——必须自己按真实时间限速，
   // 否则一秒钟能跑十几万次 tick（世界 150 倍速，水晶瞬间被拆）。
-  const HIDDEN_STEP = 1000 / 60;
+  const HIDDEN_STEP = 1000 / 120;
   hiddenChan.port1.onmessage = () => {
     if (!hiddenOn) return;
     const now = performance.now();
@@ -1183,11 +1183,11 @@ if (hiddenChan) {
         // 大厅阶段也要推进（双方就绪倒计时 / 阶段切换）
         if (lobbyActive) updateCoopLobby(1 / 60);
         else {
-          hostCoopTick(1 / 60);
+          hostCoopTick(1 / 120);
           // 后台没有渲染器消费事件，不清空的话事件会越积越多、
           // 每拍都重复发给客人（客人那边一个爆炸会画出十几圈光波）
           if (world) world.events.length = 0;
-          hostCoopSend(1 / 60);
+          hostCoopSend(1 / 120);
         }
       }
       hiddenTicks += steps;
@@ -1220,7 +1220,9 @@ if (hiddenChan) {
 
 let lastTime = performance.now();
 let acc = 0;
-const STEP = 1 / 60;
+// 模拟步长：120Hz。60Hz 时高刷屏上每 3 帧才更新一次位置，房主看着比客人还糙。
+// 模拟本身是 dt 驱动的，缩小步长不改玩法，只是 CPU 翻倍。
+const STEP = 1 / 120;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
