@@ -46,6 +46,8 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     p.charge = pw.charge;
     p.alive = pw.alive;
     p.coins = pw.coins;
+    p.hurtFlash = pw.hurtFlash ?? 0;
+    p.invuln = pw.invuln ?? 0;
     for (let i = 0; i < p.skillCd.length; i++) p.skillCd[i] = pw.skillCd[i] ?? 0;
     // 预瞄：客人本地不跑模拟，这些状态只能由房主带过来
     p.mode = (pw.mode as Player['mode']) ?? 'none';
@@ -175,16 +177,26 @@ export function applySnapshot(world: World, wire: WorldWire): void {
   })) as unknown as World['shots'];
 
   world.bottles = wire.bottles.map((b) => ({
-    from: { x: b.x, y: b.y },
-    to: { x: b.x, y: b.y },
+    from: { x: b.fromX ?? b.x, y: b.fromY ?? b.y },
+    to: { x: b.toX ?? b.x, y: b.toY ?? b.y },
     pos: { x: b.x, y: b.y },
-    t: 0,
-    dur: 1,
+    t: b.t ?? 0,
+    dur: b.dur ?? 1,
     radius: 0,
     duration: 0,
     interval: 0,
     damage: 0,
   })) as unknown as World['bottles'];
+
+  // 玩家投出的黑洞雷：只传抛物线参数，客人本地按 t 推进
+  world.grenades = (wire.grenades ?? []).map((g) => ({
+    from: { x: g.fromX, y: g.fromY },
+    to: { x: g.toX, y: g.toY },
+    t: g.t,
+    dur: g.dur,
+  })) as unknown as World['grenades'];
+
+  world.shake = wire.shake ?? 0;
 
   for (let i = 0; i < world.crystals.length; i++) {
     const c = world.crystals[i];
@@ -193,6 +205,19 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     c.hp = cw.hp;
     c.maxHp = cw.maxHp;
     c.alive = cw.alive;
+  }
+}
+
+/** 客人端：黑洞雷/毒雾瓶按本地时间推进（抛物线），和弹道外推一个道理 */
+export function animateWorld(world: World, dt: number): void {
+  for (const b of world.bottles) {
+    b.t = Math.min(b.dur, b.t + dt);
+    const k = Math.min(1, b.t / b.dur);
+    b.pos.x = b.from.x + (b.to.x - b.from.x) * k;
+    b.pos.y = b.from.y + (b.to.y - b.from.y) * k - Math.sin(k * Math.PI) * 30;
+  }
+  for (const g of world.grenades) {
+    g.t = Math.min(g.dur, g.t + dt);
   }
 }
 

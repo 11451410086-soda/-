@@ -45,6 +45,10 @@ export interface WorldWire {
   bottles: BottleWire[];
   crystals: CrystalWire[];
   events: unknown[];
+  /** 屏幕震动强度，客人端要跟着抖 */
+  shake?: number;
+  /** 玩家投出的黑洞雷（抛物线飞行中） */
+  grenades?: GrenadeWire[];
 }
 
 export interface PlayerWire {
@@ -71,6 +75,9 @@ export interface PlayerWire {
   alive: boolean;
   coins: number;
   skillCd: number[];
+  /** 受击红屏 / 无敌闪烁：客人端也要有 */
+  hurtFlash?: number;
+  invuln?: number;
   /** 预瞄状态：客人靠它画技能/武器预览（服务器权威模式可缺省） */
   mode?: string;
   throwTarget?: { x: number; y: number } | null;
@@ -127,6 +134,22 @@ export interface ShotWire {
 export interface BottleWire {
   x: number;
   y: number;
+  /** 抛物线起点/终点与进度，客人端自己推进，避免 30Hz 瞬移 */
+  fromX?: number;
+  fromY?: number;
+  toX?: number;
+  toY?: number;
+  t?: number;
+  dur?: number;
+}
+
+export interface GrenadeWire {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  t: number;
+  dur: number;
 }
 
 export interface CrystalWire {

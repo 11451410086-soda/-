@@ -5,7 +5,7 @@ import { Camera, Renderer } from './render/renderer';
 import { NetClient } from './net/client';
 import { P2P } from './net/p2p';
 import { serializeWorld } from './net/snapshot';
-import { applySnapshot, extrapolateWorld, interpolateWorld, smoothWorld } from './net/apply';
+import { animateWorld, applySnapshot, extrapolateWorld, interpolateWorld, smoothWorld } from './net/apply';
 import type { InputSnapshot } from './shared/types';
 import type { WorldWire } from '../server/protocol';
 import type { WorldEvent } from './sim/types';
@@ -717,6 +717,8 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
               };
               renderCoopLobby();
             }
+            // 房主在后台时，大厅靠 hiddenLoop 推进；收到客人消息就把它叫醒
+            if (document.hidden) hiddenLoopStart();
           } else {
             if (msg.phase === 'ready' || msg.phase === 'loadout') {
               if (msg.phase !== lobbyPhase) {
@@ -860,6 +862,8 @@ function enterCoopLobby(): void {
   hudEl.classList.remove('on');
   coop.show(p2pRole, selectedWeapon, p2pRoom);
   renderCoopLobby();
+  // 房主在后台时，大厅也要能推进（否则双方就绪后没人切阶段）
+  if (document.hidden) hiddenLoopStart();
 }
 
 function leaveCoop(): void {
@@ -939,6 +943,8 @@ function startCoopGame(): void {
   lobbyStartAt = null;
   coop.hide();
   startGame('guard');
+  // 开局时如果房主已经在后台，直接把后台循环接上
+  if (document.hidden) hiddenLoopStart();
 }
 
 /** 房主页面切到后台时浏览器会暂停 rAF，世界就冻住了 —— 明确提示，别让人以为卡死 */
@@ -1094,6 +1100,117 @@ function buildBotInput(w: World, consumePanel = true): InputSnapshot {
   };
 }
 
+/* ---------------- 房主 tick / 发快照（前台与后台共用） ---------------- */
+
+function hostCoopTick(dt: number): void {
+  if (!world || world.state !== 'playing' || paused) return;
+  acc += dt;
+  let guard = 0;
+  while (acc >= STEP && guard < 5) {
+    // 输入必须在循环里取：高刷新率下有些帧不推进逻辑，在外面取会把按键边沿吃掉
+    const inp = BOT ? buildBotInput(world, false) : buildInput(true);
+    const guestInp = p2pInput ?? EMPTY_INPUT;
+    if (DEBUG && (guestInp.skillQ || guestInp.skillE || guestInp.firePressed)) {
+      console.log('[net] 客人边沿', guestInp.skillQ ? 'Q' : guestInp.skillE ? 'E' : 'fire');
+    }
+    if (DEBUG && (inp.skillQ || inp.skillE || inp.firePressed)) {
+      console.log('[net] 房主边沿', inp.skillQ ? 'Q' : inp.skillE ? 'E' : 'fire');
+    }
+    world.tick([inp, guestInp], STEP);
+    clearInputEdges(guestInp);
+    acc -= STEP;
+    guard++;
+  }
+  // 这一帧产生的特效事件先留一份给客人（渲染时会清空 world.events）
+  if (world.events.length > 0) {
+    for (const ev of world.events) p2pEvents.push(ev);
+    if (p2pEvents.length > 80) p2pEvents.splice(0, p2pEvents.length - 80);
+  }
+}
+
+function hostCoopSend(dt: number): void {
+  if (!p2p || !p2pReady || !world) return;
+  p2pSendAcc += dt;
+  if (p2pSendAcc < 1 / 30) return;
+  p2pSendAcc = 0;
+  p2p.sendState({
+    t: 'state',
+    world: serializeWorld(world, p2pEvents.splice(0, p2pEvents.length)),
+  });
+  if (DEBUG && stateSent < 3) {
+    stateSent++;
+    console.log('[net] 发快照', stateSent);
+  }
+}
+
+/* ---------------- 切到后台也继续跑 ---------------- */
+
+// rAF 在后台标签页会被暂停，timer 会被节流到 1Hz；MessageChannel 的自调度不受影响。
+const hiddenChan = typeof MessageChannel !== 'undefined' ? new MessageChannel() : null;
+let hiddenOn = false;
+let hiddenLast = 0;
+let hiddenLogAt = 0;
+let hiddenTicks = 0;
+
+function hiddenLoopStart(): void {
+  if (!hiddenChan || hiddenOn) return;
+  if (!(p2pMode && p2pRole === 'host' && (world || lobbyActive))) return;
+  hiddenOn = true;
+  hiddenLast = performance.now();
+  hiddenLogAt = hiddenLast;
+  hiddenTicks = 0;
+  hiddenChan.port2.postMessage(0);
+}
+
+function hiddenLoopStop(): void {
+  hiddenOn = false;
+}
+
+if (hiddenChan) {
+  // MessageChannel 自调度不会被后台节流，但也意味着没有节流——必须自己按真实时间限速，
+  // 否则一秒钟能跑十几万次 tick（世界 150 倍速，水晶瞬间被拆）。
+  const HIDDEN_STEP = 1000 / 60;
+  hiddenChan.port1.onmessage = () => {
+    if (!hiddenOn) return;
+    const now = performance.now();
+    if (now - hiddenLast >= HIDDEN_STEP) {
+      let steps = Math.floor((now - hiddenLast) / HIDDEN_STEP);
+      hiddenLast += steps * HIDDEN_STEP;
+      if (steps > 5) steps = 5;
+      for (let i = 0; i < steps; i++) {
+        // 大厅阶段也要推进（双方就绪倒计时 / 阶段切换）
+        if (lobbyActive) updateCoopLobby(1 / 60);
+        else {
+          hostCoopTick(1 / 60);
+          hostCoopSend(1 / 60);
+        }
+      }
+      hiddenTicks += steps;
+      if (DEBUG && now - hiddenLogAt > 1000) {
+        console.log('[net] 后台继续运行', hiddenTicks, 'tick/s');
+        hiddenLogAt = now;
+        hiddenTicks = 0;
+      }
+    }
+    if (!(p2pMode && p2pRole === 'host' && (world || lobbyActive))) {
+      hiddenOn = false;
+      return;
+    }
+    // 大厅空闲（没在倒计时）或对局已结束就不自旋，省 CPU；有事件时再唤醒
+    const needLobby = lobbyActive && lobbyStartAt !== null;
+    const needWorld = !!world && world.state === 'playing';
+    if (!needLobby && !needWorld) {
+      hiddenOn = false;
+      return;
+    }
+    hiddenChan.port2.postMessage(0);
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hiddenLoopStart();
+    else hiddenLoopStop();
+  });
+}
+
 /* ---------------- 主循环 ---------------- */
 
 let lastTime = performance.now();
@@ -1113,45 +1230,12 @@ function frame(now: number): void {
   const t0 = performance.now();
   if (p2pMode) {
     if (p2pRole === 'host') {
-      if (world.state === 'playing' && !paused) {
-        acc += dt;
-        let guard = 0;
-        while (acc >= STEP && guard < 5) {
-          // 房主权威：自己的输入 + 客人最新输入，一起推进世界。
-          // 注意输入必须在循环里取：高刷新率下有些帧不推进逻辑，
-          // 在外面取会把按键边沿吃掉（表现就是第一下没反应）。
-          const inp = BOT ? buildBotInput(world, false) : buildInput(true);
-          const guestInp = p2pInput ?? EMPTY_INPUT;
-          if (DEBUG && (guestInp.skillQ || guestInp.skillE || guestInp.firePressed)) {
-            console.log('[net] 客人边沿', guestInp.skillQ ? 'Q' : guestInp.skillE ? 'E' : 'fire');
-          }
-          if (DEBUG && (inp.skillQ || inp.skillE || inp.firePressed)) {
-            console.log('[net] 房主边沿', inp.skillQ ? 'Q' : inp.skillE ? 'E' : 'fire');
-          }
-          world.tick([inp, guestInp], STEP);
-          clearInputEdges(guestInp);
-          acc -= STEP;
-          guard++;
-        }
-        // 这一帧产生的特效事件先留一份给客人（下面渲染时会清空 world.events）
-        if (world.events.length > 0) {
-          for (const ev of world.events) p2pEvents.push(ev);
-          if (p2pEvents.length > 80) p2pEvents.splice(0, p2pEvents.length - 80);
-        }
-      }
-      if (p2p && p2pReady) {
-        p2pSendAcc += dt;
-        if (p2pSendAcc >= 1 / 30) {
-          p2pSendAcc = 0;
-          p2p.sendState({
-            t: 'state',
-            world: serializeWorld(world, p2pEvents.splice(0, p2pEvents.length)),
-          });
-          if (DEBUG && stateSent < 3) {
-            stateSent++;
-            console.log('[net] 发快照', stateSent);
-          }
-        }
+      // 前台用 rAF 驱动；后台由 hiddenLoop 兜底。
+      // 注意不能用 document.hidden 判断：有些环境（自动化/无头）里它一直是 true，
+      // 所以只要后台循环没在跑，就让 rAF 这边接着跑。
+      if (!hiddenOn) {
+        hostCoopTick(dt);
+        hostCoopSend(dt);
       }
     } else {
       // Tab 开面板：客人本地不跑模拟，得自己切换状态再告诉房主
@@ -1212,6 +1296,8 @@ function frame(now: number): void {
       interpolateWorld(world, alpha, true);
       // 弹道（激光/飞行物）没有稳定 id，不做插值，改为按快照里的速度每帧外推
       extrapolateWorld(world, dt);
+      // 黑洞雷/毒雾瓶按本地时间推进抛物线
+      animateWorld(world, dt);
       if (DEBUG) {
         const l0 = world.lasers[0];
         if (l0) {

@@ -36,6 +36,20 @@
 
 - **预瞄状态同步**：`mode` / `aiming` / `leapTo` 走快照（`aim`/`throwTarget` 客人本地算）。
 - **构建号**：`?fps=1` 底部显示 `b:MM-DD HH:MM`，排查「改完没生效」先看这个。
+
+### D. 客人端特效补齐（快照里必须带的字段）
+- `shake`：震屏强度，客人照抄，自己不做衰减（房主每拍带过来）。
+- `grenades`：玩家投出的黑洞雷，只传 `from/to/t/dur`，客人用 `animateWorld` 按本地时间推抛物线（渲染走 `world.grenadePos`）。
+- `bottles`：毒雾瓶同理，带 `from/to/t/dur`，客人自己算 `pos`（和 `updateBottles` 同一公式：`-sin(kπ)*30`）。
+- `hurtFlash` / `invuln`：受伤红屏和无敌闪烁。
+- 弹道 `vx/vy`：见上面第 1 条。**新加任何「会动/会闪」的实体，先想清楚客人端怎么拿到它**，否则就是「房主有、客人没有」。
+
+### E. 房主切后台不停机
+- rAF 在后台标签会被暂停、`setTimeout` 会被节流到 1Hz，但 **MessageChannel 自调度不受影响**。
+- `hiddenLoop`：`port2.postMessage` 自循环，按 `performance.now()` **自己限速 60Hz**（不限速会跑出 15 万 tick/s，世界 150 倍速，水晶瞬间被拆——踩过）。
+- 触发：`visibilitychange` 到 hidden、开局 `startCoopGame`（房主已在后台时）、收到客人 lobby 消息时唤醒。
+- 空闲自动停：大厅没在倒计时、对局已结束时停掉，避免自旋吃 CPU。
+- 前台 rAF 用 `if (!hiddenOn)` 兜底（有些环境 `document.hidden` 一直是 true，不能拿它当判断）。
 - **输入时序坑**：客人端 `buildInput` 不能每帧清边沿——只在「真正发出去」的那一刻 `clearEdges()`，否则 60fps 下按在未发送帧会被吞。
 - **成长面板**：客人 Tab 可以打开，购买通过 `{t:'buy'}` 发给房主，房主临时 `localIndex = 1` 代执行；`World.tick` 只有单人才会因为开面板暂停世界，联机只冻结开面板的那个人。
 - **作弊按钮**：联机时客人按作弊会发 `{t:'cheat'}` 让房主加钱（本地加会被快照覆盖）。
