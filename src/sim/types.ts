@@ -205,6 +205,8 @@ export interface Grenade {
 export interface Zone {
   /** 归属：玩家投掷 / 域兽生成 */
   owner?: 'player' | 'enemy';
+  /** 玩家投出的范围区记下是谁投的（击杀奖励要算在对的人头上） */
+  ownerIdx?: number;
   /** 毒雾（越机），伤害玩家 */
   poison?: boolean;
   damage?: number;

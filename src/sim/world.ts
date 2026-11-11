@@ -816,6 +816,7 @@ export class World {
     this.zones.push({
       id: ++this.zoneId,
       owner: 'player',
+      ownerIdx: this.players.indexOf(this.player),
       pos: { x: pos.x, y: pos.y },
       radius: BLACKHOLE.radius,
       ttl: BLACKHOLE.duration,
@@ -851,11 +852,15 @@ export class World {
           }
           continue;
         }
+        // 范围区持续伤害：击杀奖励要算在投掷者头上（actor 决定 damageEnemy 记给谁）
+        const owner = z.ownerIdx !== undefined ? this.players[z.ownerIdx] : undefined;
+        if (owner) this.actor = owner;
         for (const e of this.enemies) {
           if (e.hp <= 0) continue;
           if (dist(e.pos, z.pos) > z.radius + e.radius) continue;
           this.damageEnemy(e, BLACKHOLE.tickDamage);
         }
+        if (owner) this.actor = null;
         this.pullEnemies(z);
       }
     }
