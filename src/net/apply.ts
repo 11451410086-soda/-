@@ -3,6 +3,9 @@ import type { WorldWire } from '../../server/protocol';
 import type { Enemy, Player } from '../sim/types';
 import type { WorldEvent } from '../sim/types';
 
+/** 联机敌人对象上挂的插值目标（不在 Enemy 类型里，渲染层读得到） */
+type EnemyNet = Enemy & { tx?: number; ty?: number };
+
 /** 把服务器快照写进本地世界对象（渲染层直接复用） */
 
 export function applySnapshot(world: World, wire: WorldWire): void {
@@ -58,43 +61,66 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     world.events.push(...(wire.events as WorldEvent[]));
   }
 
-  const prevEnemies = new Map(world.enemies.map((e) => [e.id, e]));
-  world.enemies = wire.enemies.map((e) => ({
-    id: e.id,
-    kind: e.kind as Enemy['kind'],
-    pos: { x: prevEnemies.get(e.id)?.pos.x ?? e.x, y: prevEnemies.get(e.id)?.pos.y ?? e.y },
-    tx: e.x,
-    ty: e.y,
-    hp: e.hp,
-    maxHp: e.maxHp,
-    speed: 0,
-    radius: 10,
-    dmg: 0,
-    atkInterval: 1,
-    atkTimer: 0,
-    atkRange: 0,
-    aggro: 0,
-    immunity: {},
-    ranged: false,
-    keepDist: 0,
-    shotCd: 0,
-    pathIndex: 0,
-    hitFlash: e.hitFlash,
-    ext: null,
-    attackAnim: e.attackAnim,
-    facing: e.facing,
-    rootT: e.rootT,
-    slowT: e.slowT,
-    healCd: 0,
-    slowFactor: 0,
-    rootBonus: 1,
-    windup: e.windup,
-    windupTotal: e.windupTotal,
-    windupAngle: e.windupAngle,
-    chaseT: 0,
-    chaseX: 0,
-    chaseY: 0,
-  })) as unknown as World['enemies'];
+  // 敌人按 id 复用对象：每帧新建几十个对象会把 GC 拖起来（客人端尤其明显）
+  const prevEnemies = new Map<number, EnemyNet>();
+  for (const e of world.enemies) prevEnemies.set(e.id, e as EnemyNet);
+  const nextEnemies: Enemy[] = [];
+  for (const e of wire.enemies) {
+    let ex = prevEnemies.get(e.id);
+    if (!ex) {
+      ex = {
+        id: e.id,
+        kind: e.kind as Enemy['kind'],
+        pos: { x: e.x, y: e.y },
+        tx: e.x,
+        ty: e.y,
+        hp: e.hp,
+        maxHp: e.maxHp,
+        speed: 0,
+        radius: 10,
+        dmg: 0,
+        atkInterval: 1,
+        atkTimer: 0,
+        atkRange: 0,
+        aggro: 0,
+        immunity: {},
+        ranged: false,
+        keepDist: 0,
+        shotCd: 0,
+        pathIndex: 0,
+        hitFlash: 0,
+        ext: null,
+        attackAnim: 0,
+        facing: 1,
+        rootT: 0,
+        slowT: 0,
+        healCd: 0,
+        slowFactor: 0,
+        rootBonus: 1,
+        windup: 0,
+        windupTotal: 0,
+        windupAngle: 0,
+        chaseT: 0,
+        chaseX: 0,
+        chaseY: 0,
+      } as unknown as EnemyNet;
+    }
+    ex.kind = e.kind as Enemy['kind'];
+    ex.tx = e.x;
+    ex.ty = e.y;
+    ex.hp = e.hp;
+    ex.maxHp = e.maxHp;
+    ex.hitFlash = e.hitFlash;
+    ex.attackAnim = e.attackAnim;
+    ex.facing = e.facing;
+    ex.rootT = e.rootT;
+    ex.slowT = e.slowT;
+    ex.windup = e.windup;
+    ex.windupTotal = e.windupTotal;
+    ex.windupAngle = e.windupAngle;
+    nextEnemies.push(ex);
+  }
+  world.enemies = nextEnemies;
 
   world.lasers = wire.lasers.map((l) => ({
     pos: { x: l.x, y: l.y },

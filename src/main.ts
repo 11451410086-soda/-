@@ -1154,7 +1154,9 @@ function frame(now: number): void {
       // 只在收到新快照时重建世界对象；每帧重建纯属给 GC 添堵
       if (p2pSnap && p2pSnap !== lastAppliedSnap) {
         lastAppliedSnap = p2pSnap;
+        const tAp = performance.now();
         applySnapshot(world, p2pSnap);
+        tApply += performance.now() - tAp;
       }
       // 面板开关是离散状态，变化即发，不必挤进 30Hz 输入
       const gpOpen = world.player.panelOpen;
@@ -1258,16 +1260,17 @@ vis ${document.visibilityState}  focus ${document.hasFocus()}  net ${p2pReady ? 
   if (SHOW_FPS && fpsEl) {
     fpsFrames++;
     fpsTime += dt;
-    tApply += tD1 - tD0;
     tDraw += tD1 - tD0;
     tHud += tH1 - tH0;
     if (fpsTime >= 0.5) {
       const fps = fpsFrames / fpsTime;
       const snapRate = p2pMode ? '  snap ' + Math.round(snapCount / fpsTime) + '/s' : '';
+      const applyMs = '  apply ' + (tApply / fpsFrames).toFixed(2) + 'ms';
       fpsEl.textContent =
         'FPS ' + fps.toFixed(0) +
         '  draw ' + ((tDraw / fpsFrames) * 1).toFixed(1) + 'ms' +
         '  hud ' + ((tHud / fpsFrames) * 1).toFixed(1) + 'ms' +
+        applyMs +
         snapRate +
         '  online ' + (ONLINE ? 'yes' : 'no');
       fpsFrames = 0;
