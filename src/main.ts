@@ -1133,15 +1133,43 @@ function hostCoopTick(dt: number): void {
 function hostCoopSend(dt: number): void {
   if (!p2p || !p2pReady || !world) return;
   p2pSendAcc += dt;
-  if (p2pSendAcc < 1 / 30) return;
+  if (p2pSendAcc < 1 / 60) return;
   p2pSendAcc = 0;
-  p2p.sendState({
-    t: 'state',
-    world: serializeWorld(world, p2pEvents.splice(0, p2pEvents.length)),
-  });
+  const wire = serializeWorld(world, p2pEvents.splice(0, p2pEvents.length));
+  p2p.sendState({ t: 'state', world: wire });
+  if (DEBUG) measureSnapSize(wire);
   if (DEBUG && stateSent < 3) {
     stateSent++;
     console.log('[net] 发快照', stateSent);
+  }
+}
+
+/** 调试：统计快照体积（每秒打印 avg/max 与实际 KB/s） */
+let snapBytesSum = 0;
+let snapBytesMax = 0;
+let snapBytesN = 0;
+let snapBytesAt = 0;
+function measureSnapSize(wire: unknown): void {
+  const n = JSON.stringify(wire).length;
+  snapBytesSum += n;
+  if (n > snapBytesMax) snapBytesMax = n;
+  snapBytesN++;
+  const now = performance.now();
+  const elapsed = (now - snapBytesAt) / 1000;
+  if (elapsed > 1) {
+    if (snapBytesN > 0) {
+      const avg = snapBytesSum / snapBytesN;
+      const perSec = snapBytesSum / elapsed / 1024;
+      console.log(
+        '[net] 快照体积 avg ' + (avg / 1024).toFixed(2) + 'KB  max ' +
+          (snapBytesMax / 1024).toFixed(2) + 'KB  ' + snapBytesN + '/s  ' +
+          perSec.toFixed(0) + 'KB/s',
+      );
+    }
+    snapBytesAt = now;
+    snapBytesSum = 0;
+    snapBytesMax = 0;
+    snapBytesN = 0;
   }
 }
 
@@ -1270,7 +1298,7 @@ function frame(now: number): void {
       }
       if (p2p && p2pReady) {
         p2pSendAcc += dt;
-        if (p2pSendAcc >= 1 / 30) {
+        if (p2pSendAcc >= 1 / 60) {
           p2pSendAcc = 0;
           if (DEBUG && (inp.firePressed || inp.skillQ || inp.rollPressed)) {
             console.log('[net] 客人发出边沿', inp.firePressed ? 'fire' : inp.skillQ ? 'Q' : 'roll');
@@ -1397,6 +1425,8 @@ function frame(now: number): void {
       guard++;
       if (world.state !== 'playing') break;
     }
+    // 调试：单机也量一下快照体积（用真实世界估算联机带宽）
+    if (DEBUG) measureSnapSize(serializeWorld(world, []));
     if (acc > STEP * 3) acc = 0;
   }
 
