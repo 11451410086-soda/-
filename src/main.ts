@@ -683,6 +683,7 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
         }
         if (msg.t === 'state' && msg.world) {
           p2pSnap = msg.world;
+          snapCount++;
           // 客人收到第一帧快照才建世界，避免空跑
           if (p2pRole === 'guest' && !world) enterGuestWorld();
         } else if (msg.t === 'input' && msg.snap) {
@@ -987,6 +988,7 @@ const fpsEl = document.getElementById('fps');
 if (SHOW_FPS && fpsEl) fpsEl.style.display = 'block';
 let fpsFrames = 0;
 let fpsTime = 0;
+let snapCount = 0;
 let tApply = 0;
 let tDraw = 0;
 let tHud = 0;
@@ -1238,13 +1240,16 @@ vis ${document.visibilityState}  focus ${document.hasFocus()}  net ${p2pReady ? 
     tHud += tH1 - tH0;
     if (fpsTime >= 0.5) {
       const fps = fpsFrames / fpsTime;
+      const snapRate = p2pMode ? '  snap ' + Math.round(snapCount / fpsTime) + '/s' : '';
       fpsEl.textContent =
         'FPS ' + fps.toFixed(0) +
         '  draw ' + ((tDraw / fpsFrames) * 1).toFixed(1) + 'ms' +
         '  hud ' + ((tHud / fpsFrames) * 1).toFixed(1) + 'ms' +
+        snapRate +
         '  online ' + (ONLINE ? 'yes' : 'no');
       fpsFrames = 0;
       fpsTime = 0;
+      snapCount = 0;
       tApply = 0;
       tDraw = 0;
       tHud = 0;
