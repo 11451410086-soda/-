@@ -26,8 +26,16 @@
 - **信令**：走 ws 服务器的 `p2p-*` 转发。房主只在收到 `p2p-join` 时发 offer；客人没连上就每 1.2s 重发 join。ICE 候选先进队列，`setRemoteDescription` 之后才灌进去。
 - **两条数据通道**：`state`（不可靠无序，房主 30Hz 快照 + 大厅广播）/ `input`（可靠有序，客人输入、面板、购买、作弊）。别合回一条——快照丢了无所谓，按键边沿不能丢。
 - **房主**：跑真实世界，`world.tick([自己输入, 客人输入])`。客人的输入用 `mergeInput` 累积边沿，等 tick 消费，避免 33ms 后被下一包覆盖。
-- **客人**：收到第一帧快照才建世界（`world.localIndex = 1`），只做 `applySnapshot` + `smoothWorld` + 渲染，不跑模拟。**只在收到新快照时 apply**，别每帧重建（以前每帧重建整个 enemies/lasers 数组，帧数会被 GC 拖）。
-- **预瞄**：`mode` / `throwTarget` / `aiming` / `leapTo` 都在快照里同步，客人才能画出技能范围圈和蓄力弹道。
+- **客人**：收到第一帧快照才建世界（`world.localIndex = 1`），只做 `applySnapshot` + 插值 + 渲染，不跑模拟。**只在收到新快照时 apply**，别每帧重建。
+
+### 客人端「不顺」的四个坑（都踩过，别再踩）
+1. **弹道不插值** → 子弹每 30Hz 瞬移。快照里带 `vx/vy`，客人每帧 `extrapolateWorld()` 按速度外推。
+2. **自己角色等房主回包** → 手感像延迟 100ms。客人本地 `world.predictPlayerMove()` 预测移动，`smoothWorld`/`interpolateWorld` 要跳过本地玩家；纠偏带死区（<22px 不管，>22px 缓拉，>90px 对齐）。
+3. **瞄准角抄快照** → 预瞄线 30Hz 一跳一跳。客人每帧用本地鼠标算 `p.aim`，投掷落点 `throwTarget` 也本地算（按技能射程夹紧）。
+4. **渲染取整** → 逻辑分辨率 480×270，放大 3 倍后 `Math.round` 让慢速角色每帧在 0/1 逻辑像素间跳（=3 屏幕像素）。画布按整数倍放大（`Renderer.setScale`，后备画布 = 480*s），去掉角色/相机的 `Math.round`。
+
+- **预瞄状态同步**：`mode` / `aiming` / `leapTo` 走快照（`aim`/`throwTarget` 客人本地算）。
+- **构建号**：`?fps=1` 底部显示 `b:MM-DD HH:MM`，排查「改完没生效」先看这个。
 - **输入时序坑**：客人端 `buildInput` 不能每帧清边沿——只在「真正发出去」的那一刻 `clearEdges()`，否则 60fps 下按在未发送帧会被吞。
 - **成长面板**：客人 Tab 可以打开，购买通过 `{t:'buy'}` 发给房主，房主临时 `localIndex = 1` 代执行；`World.tick` 只有单人才会因为开面板暂停世界，联机只冻结开面板的那个人。
 - **作弊按钮**：联机时客人按作弊会发 `{t:'cheat'}` 让房主加钱（本地加会被快照覆盖）。
