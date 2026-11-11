@@ -3,9 +3,11 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   // 相对路径，dist 可以直接丢到任意静态目录/子路径下
   base: './',
-  // 构建标记：显示在 ?fps=1 的悬浮层上，方便确认跑的是哪一版
+  // 构建标记：显示在 ?fps=1 的悬浮层上，方便确认跑的是哪一版（固定用北京时间，runner 是 UTC）
   define: {
-    __BUILD_ID__: JSON.stringify(new Date().toISOString().slice(5, 16).replace('T', ' ')),
+    __BUILD_ID__: JSON.stringify(
+      new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(5, 16).replace('T', ' '),
+    ),
   },
   server: {
     host: '127.0.0.1',
