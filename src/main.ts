@@ -1,5 +1,4 @@
-import './style.css';
-import { RAIL_WEAPON, SHIELD_WEAPON, SKILLS } from './content/defs';
+import './style.css';import { RAIL_WEAPON, SHIELD_WEAPON, SKILLS } from './content/defs';
 import { VIEW } from './content/defs';
 import type { HeroId } from './content/defs';
 import { Camera, Renderer } from './render/renderer';
@@ -18,9 +17,12 @@ import { GrowthPanel } from './ui/panel';
 import { CoopLobby } from './ui/coop';
 import type { LobbyCard, LobbyPhase, LobbyWeapon } from './ui/coop';
 
+declare const __BUILD_ID__: string;
+
 window.addEventListener('error', (e) => {
   console.error('BOOT ERROR:', e.message, '@', e.filename, e.lineno, e.colno);
 });
+console.log('[boot] build', __BUILD_ID__);
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const screenTitle = document.getElementById('screen-title') as HTMLElement;
@@ -1190,6 +1192,20 @@ function frame(now: number): void {
       // 客人不跑模拟，但自己的移动必须在本地预测，否则手感到不了 30Hz 快照的延迟
       const me = world.player;
       if (me.alive && !me.panelOpen) world.predictPlayerMove(me, inp, dt);
+      // 瞄准角也本地算：房主的 aim 是 30Hz 的，直接用它预瞄线会一跳一跳
+      if (me.alive) {
+        me.aim = Math.atan2(inp.aimY - me.pos.y, inp.aimX - me.pos.x);
+        // 技能投掷预览的落点同样本地推，别等快照
+        if (me.mode === 'throw' || me.mode === 'leapaim') {
+          const range =
+            me.mode === 'throw' ? (SKILLS.blackhole.range ?? 260) : (SKILLS.leap.range ?? 200);
+          const dx = inp.aimX - me.pos.x;
+          const dy = inp.aimY - me.pos.y;
+          const d = Math.hypot(dx, dy);
+          const k = d > range ? range / d : 1;
+          me.throwTarget = { x: me.pos.x + dx * k, y: me.pos.y + dy * k };
+        }
+      }
       // 其他人/怪：在上一拍和这一拍之间线性插值，匀速、不跳
       const nowMs = performance.now();
       const alpha = (nowMs - snapAt) / Math.max(0.016, snapInterval);
@@ -1330,6 +1346,7 @@ vis ${document.visibilityState}  focus ${document.hasFocus()}  net ${p2pReady ? 
         '  hud ' + ((tHud / fpsFrames) * 1).toFixed(1) + 'ms' +
         applyMs +
         snapRate +
+        '  b:' + __BUILD_ID__ +
         '  online ' + (ONLINE ? 'yes' : 'no');
       fpsFrames = 0;
       fpsTime = 0;
