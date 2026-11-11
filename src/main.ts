@@ -1126,6 +1126,8 @@ function hostCoopTick(dt: number): void {
     for (const ev of world.events) p2pEvents.push(ev);
     if (p2pEvents.length > 80) p2pEvents.splice(0, p2pEvents.length - 80);
   }
+  // 防御：万一没人消费（例如房主在后台），别让事件数组无限增长
+  if (world.events.length > 200) world.events.length = 200;
 }
 
 function hostCoopSend(dt: number): void {
@@ -1182,6 +1184,9 @@ if (hiddenChan) {
         if (lobbyActive) updateCoopLobby(1 / 60);
         else {
           hostCoopTick(1 / 60);
+          // 后台没有渲染器消费事件，不清空的话事件会越积越多、
+          // 每拍都重复发给客人（客人那边一个爆炸会画出十几圈光波）
+          if (world) world.events.length = 0;
           hostCoopSend(1 / 60);
         }
       }
