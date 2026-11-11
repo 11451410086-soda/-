@@ -35,6 +35,8 @@ const pauseScreen = document.getElementById('pause') as HTMLElement;
 const pauseTitle = document.getElementById('pause-title') as HTMLElement;
 const prepScreen = document.getElementById('prep') as HTMLElement;
 let paused = false;
+/** 联机时菜单开着但世界不暂停 */
+let menuOpen = false;
 
 const renderer = new Renderer(canvas);
 const camera = new Camera();
@@ -160,7 +162,7 @@ window.addEventListener('keydown', (e) => {
       panelWasOpen = false;
       return;
     }
-    if (world && world.state === 'playing' && !ended) setPaused(!paused);
+    if (world && world.state === 'playing' && !ended) setPaused(!(p2pMode ? menuOpen : paused));
     return;
   }
   if (e.repeat) return;
@@ -235,6 +237,21 @@ function buildInput(consume: boolean): InputSnapshot {
 }
 
 function setPaused(v: boolean): void {
+  // 联机：菜单只是盖一层 UI，世界继续跑（房主暂停会冻住两个人的局）
+  if (p2pMode) {
+    menuOpen = v;
+    pauseScreen.classList.toggle('hidden', !v);
+    if (v) {
+      keys.clear();
+      mouse.left = false;
+      mouse.right = false;
+      clearEdges();
+      pauseTitle.textContent =
+        p2pRole === 'guest' ? '菜单 · 联机中世界仍在进行' : '菜单 · 联机中不暂停（世界继续）';
+    }
+    lastTime = performance.now();
+    return;
+  }
   paused = v;
   pauseScreen.classList.toggle('hidden', !v);
   if (v) {
@@ -242,8 +259,7 @@ function setPaused(v: boolean): void {
     mouse.left = false;
     mouse.right = false;
     clearEdges();
-    // 客人这边暂停不了房主的世界，别写「已暂停」骗人
-    pauseTitle.textContent = p2pMode && p2pRole === 'guest' ? '菜单 · 联机中世界仍在进行' : '已暂停';
+    pauseTitle.textContent = '已暂停';
   }
   lastTime = performance.now();
 }
