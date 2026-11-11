@@ -50,8 +50,14 @@ const lobby = document.getElementById("lobby") as HTMLElement;
 const lobbyCodeEl = document.getElementById("lobby-code") as HTMLElement;
 const lobbyInput = document.getElementById("lobby-input") as HTMLInputElement;
 const lobbyTip = document.getElementById("lobby-tip") as HTMLElement;
-const lobbyCopy = document.getElementById("lobby-copy") as HTMLElement;
 let roomCode = "";
+
+/** 清掉上一次房间留下的界面状态（离开房间后别再显示旧房间号） */
+function resetRoomUi(): void {
+  roomCode = "";
+  lobbyCodeEl.textContent = "";
+  lobbyTip.textContent = "创建一个房间，把邀请链接发给朋友即可";
+}
 
 function onlineUrl(code: string, role: "host" | "guest"): string {
   const base = location.origin + location.pathname;
@@ -67,24 +73,18 @@ function onlineUrl(code: string, role: "host" | "guest"): string {
 
 document.getElementById("btn-online")!.addEventListener("click", () => {
   warmSignal();
+  // 已经不在房间里的话，开弹窗就是全新的开始
+  if (!p2p) resetRoomUi();
   lobby.classList.remove("hidden");
-  lobbyTip.textContent = "创建一个房间，把链接发给朋友即可";
 });
 document.getElementById("lobby-close")!.addEventListener("click", () => lobby.classList.add("hidden"));
 document.getElementById("lobby-create")!.addEventListener("click", () => {
   roomCode = Math.random().toString(36).slice(2, 6).toUpperCase();
   lobbyCodeEl.textContent = roomCode;
-  lobbyCopy.classList.remove("hidden");
   lobbyTip.textContent = "房间已创建，正在进入准备界面…";
   // 创建房间直接进准备界面，不用再回主菜单点开始
   startP2P(roomCode, "host");
   enterCoopLobby();
-});
-lobbyCopy.addEventListener("click", () => {
-  if (!roomCode) return;
-  const url = onlineUrl(roomCode, "guest");
-  void navigator.clipboard?.writeText(url);
-  lobbyTip.textContent = "已复制：" + url;
 });
 document.getElementById("lobby-join")!.addEventListener("click", () => {
   const code = lobbyInput.value.trim().toUpperCase();
@@ -833,6 +833,8 @@ function leaveCoop(): void {
   hudEl.classList.remove('on');
   screenTitle.classList.remove('hidden');
   setNetStatus(null);
+  // 房间号也一起清掉，否则下次开弹窗还显示上一次的码
+  resetRoomUi();
 }
 
 function updateCoopLobby(dt: number): void {
