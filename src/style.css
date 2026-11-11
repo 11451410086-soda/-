@@ -1917,6 +1917,27 @@ body {
   max-width: 228px;
 }
 
+/* 联机选武器界面下方的技能一览 */
+.coop-skills {
+  display: none;
+  margin: -4px 0 14px;
+  text-align: center;
+}
+
+.coop.phase-loadout .coop-skills {
+  display: block;
+}
+
+.coop-skills .prep-skill-row {
+  margin-top: 8px;
+}
+
+.coop-skills .prep-skill i {
+  font-size: 10px;
+  font-style: normal;
+  color: #5f7f99;
+}
+
 .coop-peer-mini {
   width: 170px;
   padding: 14px 14px 16px;

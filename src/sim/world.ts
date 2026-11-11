@@ -382,9 +382,9 @@ export class World {
   }
 
   /** 攻击的扇形是否压在盾面上（不看方向来源，只看范围是否重叠） */
-  shieldOverlapsFan(e: Enemy): boolean {
+  shieldOverlapsFan(e: Enemy, pl?: Player): boolean {
     const fan = ENEMIES[e.kind].fan;
-    const p = this.player;
+    const p = pl ?? this.player;
     if (!fan) return false;
 
     for (let i = -2; i <= 2; i++) {
@@ -401,8 +401,8 @@ export class World {
   }
 
   /** 只扣耐久与减伤，不做方向判定（供范围重叠类攻击使用） */
-  absorbHit(dmg: number): number {
-    const p = this.player;
+  absorbHit(dmg: number, target?: Player): number {
+    const p = target ?? this.player;
     if (p.meteorT > 0 || p.shieldHp <= 0) return dmg;
     p.shieldHp = Math.max(0, p.shieldHp - SHIELD_WEAPON.durPerHit);
     if (p.shieldHp <= 0) this.breakShield();
@@ -845,7 +845,7 @@ export class World {
                 dmg *= 1 - SHIELD_WEAPON.groundDR;
               }
             }
-            this.damagePlayer(dmg, z.pos);
+            this.damagePlayer(dmg, z.pos, p);
           }
           continue;
         }
@@ -1082,10 +1082,11 @@ export class World {
 
       if (!objective) continue;
 
-      const p = this.player;
+      const anyAlive = this.players.some((pl) => pl.alive);
       // 玩家进入索敌范围 → 开始追击，并记下追击锚点
       const nearPlayer =
-        ENEMIES[e.kind].ranged && dist(e.pos, p.pos) <= ENEMIES[e.kind].aggro;
+        ENEMIES[e.kind].ranged &&
+        this.players.some((pl) => pl.alive && dist(e.pos, pl.pos) <= ENEMIES[e.kind].aggro);
       if (this.playerInTheWay(e, objective) || nearPlayer) {
         if (e.chaseT <= 0) {
           e.chaseX = e.pos.x;
@@ -1097,7 +1098,7 @@ export class World {
       // 追击有距离上限：离锚点太远、或玩家倒下，就放弃并回防
       if (e.chaseT > 0) {
         const leash = Math.hypot(e.pos.x - e.chaseX, e.pos.y - e.chaseY);
-        if (!p.alive || leash > CHASE_RANGE) e.chaseT = 0;
+        if (!anyAlive || leash > CHASE_RANGE) e.chaseT = 0;
       }
 
       if (e.chaseT > 0) {
@@ -1114,9 +1115,10 @@ export class World {
   throwBottle(e: Enemy): void {
     const cfg = ENEMIES[e.kind].bottle;
     if (!cfg) return;
+    const tgt = this.nearestPlayer(e.pos);
     this.bottles.push({
       from: { x: e.pos.x, y: e.pos.y },
-      to: { x: this.player.pos.x, y: this.player.pos.y },
+      to: { x: tgt.pos.x, y: tgt.pos.y },
       pos: { x: e.pos.x, y: e.pos.y },
       t: 0,
       dur: cfg.flightTime,
@@ -1175,7 +1177,7 @@ export class World {
 
   /** 玩家挡在路上：停下并攻击玩家 */
   engagePlayer(e: Enemy, dt: number): void {
-    const p = this.player;
+    const p = this.nearestPlayer(e.pos);
     const d = dist(e.pos, p.pos);
     e.facing = angleTo(e.pos, p.pos);
     const fan = ENEMIES[e.kind].fan;
@@ -1213,7 +1215,7 @@ export class World {
     } else if (e.atkTimer <= 0) {
       e.atkTimer = e.atkInterval;
       e.attackAnim = 1;
-      this.damagePlayer(e.dmg, e.pos);
+      this.damagePlayer(e.dmg, e.pos, p);
     }
   }
 
@@ -1224,25 +1226,25 @@ export class World {
    * - 正前方（挡路）：更大的范围
    */
   playerInTheWay(e: Enemy, objective: Crystal): boolean {
-    const p = this.player;
-    if (!p.alive) return false;
-    const dx = p.pos.x - e.pos.x;
-    const dy = p.pos.y - e.pos.y;
-    const d = Math.hypot(dx, dy);
-    if (d < 0.001) return true;
-
-    // 贴身：不分方向
-    const near = e.radius + 16;
-    if (d <= near) return true;
-
-    // 前方挡路：范围更大，但必须朝着目标方向
-    const blockReach = e.radius + 34;
-    if (d > blockReach) return false;
     const tx = objective.pos.x - e.pos.x;
     const ty = objective.pos.y - e.pos.y;
     const tl = Math.hypot(tx, ty) || 1;
-    const dot = (dx * tx + dy * ty) / (d * tl);
-    return dot > 0.15;
+    // 联机：任何一个活着的玩家挡路都算（不能只看房主）
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      const dx = p.pos.x - e.pos.x;
+      const dy = p.pos.y - e.pos.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 0.001) return true;
+      // 贴身：不分方向
+      if (d <= e.radius + 16) return true;
+      // 前方挡路：范围更大，但必须朝着目标方向
+      const blockReach = e.radius + 34;
+      if (d > blockReach) continue;
+      const dot = (dx * tx + dy * ty) / (d * tl);
+      if (dot > 0.15) return true;
+    }
+    return false;
   }
 
   advancePath(e: Enemy, objective: Crystal, dt: number): void {
@@ -1294,28 +1296,29 @@ export class World {
     e.attackAnim = 1;
   }
 
-  /** 普则的扇形劈击：预警结束，结算命中 */
+  /** 普则的扇形劈击：预警结束，结算命中（联机要对每个玩家都结算） */
   fanStrike(e: Enemy): void {
     const fan = ENEMIES[e.kind].fan;
     if (!fan) return;
-    const p = this.player;
     let hit = false;
 
-    // 盾是实体：只要扇形压在盾面上就挡下（不要求打中角色）
-    let shieldBlocked = false;
-    if (p.alive && this.player.weaponId === 'shield' && this.shieldOverlapsFan(e)) {
-      shieldBlocked = true;
-      this.absorbHit(0);
-    }
-
-    const airborne = p.leapT > 0 || p.leapHangT > 0;
-    if (
-      p.alive &&
-      !airborne &&
-      inFan(e.pos.x, e.pos.y, e.windupAngle, fan.halfAngle, fan.radius, p.pos.x, p.pos.y, this.hero.radius)
-    ) {
-      let dealt = shieldBlocked ? e.dmg * (1 - SHIELD_WEAPON.blockDR) : e.dmg;
-      if (dealt > 0) this.damagePlayer(dealt, e.pos);
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      // 盾是实体：只要扇形压在盾面上就挡下（不要求打中角色）
+      let shieldBlocked = false;
+      if (p.weaponId === 'shield' && this.shieldOverlapsFan(e, p)) {
+        shieldBlocked = true;
+        this.absorbHit(0, p);
+      }
+      const airborne = p.leapT > 0 || p.leapHangT > 0;
+      if (
+        airborne ||
+        !inFan(e.pos.x, e.pos.y, e.windupAngle, fan.halfAngle, fan.radius, p.pos.x, p.pos.y, this.hero.radius)
+      ) {
+        continue;
+      }
+      const dealt = shieldBlocked ? e.dmg * (1 - SHIELD_WEAPON.blockDR) : e.dmg;
+      if (dealt > 0) this.damagePlayer(dealt, e.pos, p);
       hit = true;
     }
     for (const c of this.crystals) {
@@ -1525,7 +1528,6 @@ export class World {
   }
 
   updateShots(dt: number): void {
-    const p = this.player;
     for (const s of this.shots) {
       let slow = 1;
       if (this.hasSkillShape('blackhole', 'slowfield')) {
@@ -1535,28 +1537,30 @@ export class World {
       s.pos.x += s.vel.x * dt * slow;
       s.pos.y += s.vel.y * dt * slow;
       s.life -= dt;
-      // 盾是实体：子弹进入盾面的扇形区域就被挡下
-      if (
-        p.alive &&
-        s.life > 0 &&
-        this.player.weaponId === 'shield' &&
-        p.meteorT <= 0 &&
-        p.shieldHp > 0
-      ) {
-        const d = dist(s.pos, p.pos);
-        const incoming = angleTo(p.pos, { x: s.pos.x - s.vel.x * 0.2, y: s.pos.y - s.vel.y * 0.2 });
-        if (
-          d <= SHIELD_WEAPON.blockRadius &&
-          Math.abs(angleDiff(incoming, p.shieldAngle)) <= SHIELD_WEAPON.blockHalf
-        ) {
-          s.life = 0;
-          this.absorbHit(0);
-          continue;
+      // 联机：子弹要和每个玩家都判一次
+      for (const p of this.players) {
+        if (!p.alive || s.life <= 0) continue;
+        // 盾是实体：子弹进入盾面的扇形区域就被挡下
+        if (p.weaponId === 'shield' && p.meteorT <= 0 && p.shieldHp > 0) {
+          const d = dist(s.pos, p.pos);
+          const incoming = angleTo(p.pos, {
+            x: s.pos.x - s.vel.x * 0.2,
+            y: s.pos.y - s.vel.y * 0.2,
+          });
+          if (
+            d <= SHIELD_WEAPON.blockRadius &&
+            Math.abs(angleDiff(incoming, p.shieldAngle)) <= SHIELD_WEAPON.blockHalf
+          ) {
+            s.life = 0;
+            this.absorbHit(0, p);
+            break;
+          }
         }
-      }
-      if (p.alive && s.life > 0 && dist(s.pos, p.pos) <= this.hero.radius + s.radius) {
-        s.life = 0;
-        this.damagePlayer(s.dmg, s.pos);
+        if (dist(s.pos, p.pos) <= this.hero.radius + s.radius) {
+          s.life = 0;
+          this.damagePlayer(s.dmg, s.pos, p);
+          break;
+        }
       }
       if (s.pos.x < 0 || s.pos.y < 0 || s.pos.x > LEVEL.width || s.pos.y > LEVEL.height) s.life = 0;
     }
@@ -1607,8 +1611,8 @@ export class World {
     }
   }
 
-  damagePlayer(amount: number, src?: Vec): void {
-    const p = this.player;
+  damagePlayer(amount: number, src?: Vec, target?: Player): void {
+    const p = target ?? this.player;
     if (!p.alive || p.invuln > 0) return;
     if (p.rollIframe > 0) return;
 

@@ -102,6 +102,10 @@ export class CoopLobby {
       '<div class="coop-peer-state" id="coop-peer-state">等待进入</div>' +
       '</div>' +
       '</div>' +
+      '<div class="coop-skills">' +
+      '<div class="prep-title">技能 · Q / E / F</div>' +
+      '<div class="prep-skill-row" id="coop-skill-list"></div>' +
+      '</div>' +
       '<div class="coop-actions">' +
       '<button id="coop-ready" class="btn">准 备</button>' +
       '<button id="coop-leave" class="btn ghost">离 开</button>' +
@@ -123,6 +127,7 @@ export class CoopLobby {
     this.peerTag = this.root.querySelector('#coop-peer-tag') as HTMLElement;
     this.peerState = this.root.querySelector('#coop-peer-state') as HTMLElement;
     this.buildLoadout();
+    this.buildSkills();
     this.cards = {
       host: this.makeCard('host'),
       guest: this.makeCard('guest'),
@@ -197,6 +202,28 @@ export class CoopLobby {
   }
 
   /** 选武器阶段的大卡片：跟单机准备界面同一套样式 */
+  /** 技能一览：和单机准备界面一致，联机也看得到 Q/E/F */
+  private buildSkills(): void {
+    const list = this.root.querySelector('#coop-skill-list') as HTMLElement | null;
+    if (!list) return;
+    const order = ['blackhole', 'leap', 'stone'];
+    const keys = ['Q', 'E', 'F'];
+    list.innerHTML = order
+      .map((id, i) => {
+        const d = SKILLS[id];
+        return (
+          '<div class="prep-skill"><b>' +
+          keys[i] +
+          '</b><span>' +
+          d.name +
+          '</span><i>冷却 ' +
+          d.cd +
+          ' 秒</i></div>'
+        );
+      })
+      .join('');
+  }
+
   private buildLoadout(): void {
     const rail = RAIL_WEAPON;
     const shield = SHIELD_WEAPON;
