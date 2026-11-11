@@ -905,8 +905,8 @@ export class Renderer {
   drawPlayer(ctx: CanvasRenderingContext2D, world: World, p: Player, t: number): void {
     if (!p.alive) return;
 
-    // 陨落：空中弧线 / 滞空
-    const lift = world.playerLift();
+    // 陨落：空中弧线 / 滞空（按当前角色算，否则谁飞所有人都飞）
+    const lift = world.playerLift(p);
     const spr = S.GUARD_SPRITE;
     const blink = p.invuln > 0 && Math.floor(t * 16) % 2 === 0;
 
@@ -963,7 +963,7 @@ export class Renderer {
       ctx.restore();
 
       // 底盾（塑造）：脚下固定圆形抵挡
-      if (world.shapeLevel('ground') > 0) {
+      if ((p.shapes['ground'] ?? 0) > 0) {
         ctx.beginPath();
         ctx.arc(p.pos.x, p.pos.y + 3, SHIELD_WEAPON.groundRadius, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(120,200,255,0.08)';

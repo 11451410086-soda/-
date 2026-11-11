@@ -1,4 +1,4 @@
-import './style.css';import { RAIL_WEAPON, SHIELD_WEAPON, SKILLS } from './content/defs';
+import './style.css';import { RAIL_WEAPON, ROLL, SHIELD_WEAPON, SKILLS } from './content/defs';
 import { VIEW } from './content/defs';
 import type { HeroId } from './content/defs';
 import { Camera, Renderer } from './render/renderer';
@@ -1308,12 +1308,31 @@ function frame(now: number): void {
           clearEdges();
         }
       }
-      // 客人不跑模拟，但自己的移动必须在本地预测，否则手感到不了 30Hz 快照的延迟
+      // 客人不跑模拟，但自己的移动必须在本地预测，否则手感到不了快照间隔的延迟
       const me = world.player;
-      if (me.alive && !me.panelOpen) world.predictPlayerMove(me, inp, dt);
-      // 瞄准角也本地算：房主的 aim 是 30Hz 的，直接用它预瞄线会一跳一跳
+      // 瞄准角先本地算（下面的翻滚方向要用最新的准星）
       if (me.alive) {
         me.aim = Math.atan2(inp.aimY - me.pos.y, inp.aimX - me.pos.x);
+      }
+      // 翻滚也本地起步：等房主确认要晚一整个快照间隔，闪避会显得「滑」
+      if (me.alive && inp.rollPressed && me.rollT <= 0 && me.stamina >= ROLL.cost) {
+        let dx = inp.moveX;
+        let dy = inp.moveY;
+        const len = Math.hypot(dx, dy);
+        if (len < 0.01) {
+          dx = Math.cos(me.aim);
+          dy = Math.sin(me.aim);
+        } else {
+          dx /= len;
+          dy /= len;
+        }
+        me.rollDir.x = dx;
+        me.rollDir.y = dy;
+        me.rollT = ROLL.duration;
+        me.stamina -= ROLL.cost;
+      }
+      if (me.alive && !me.panelOpen) world.predictPlayerMove(me, inp, dt);
+      if (me.alive) {
         // 技能投掷预览的落点同样本地推，别等快照
         if (me.mode === 'throw' || me.mode === 'leapaim') {
           const range =

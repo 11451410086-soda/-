@@ -291,6 +291,14 @@ export class World {
    * 客人不跑模拟，但自己的角色必须立刻响应，否则高刷屏上手感像延迟 100ms。
    */
   predictPlayerMove(p: Player, input: InputSnapshot, dt: number): void {
+    // 翻滚：和 updateGuard 里的冲刺保持一致，否则客人端会被纠偏拽成「滑行」
+    if (p.rollT > 0) {
+      p.pos.x += p.rollDir.x * ROLL.speed * dt;
+      p.pos.y += p.rollDir.y * ROLL.speed * dt;
+      p.pos.x = clamp(p.pos.x, 10, LEVEL.width - 10);
+      p.pos.y = clamp(p.pos.y, LEVEL.road.top + 16, LEVEL.road.bottom - 10);
+      return;
+    }
     const len = Math.hypot(input.moveX, input.moveY);
     if (len > 0.01 && p.eggT <= 0) {
       const zoneBuff = p.zoneBuffT > 0 ? 1 + BLACKHOLE_SHAPE.buffSpeed : 1;
@@ -702,9 +710,8 @@ export class World {
     }
   }
 
-  /** 角色当前的视觉高度（空中） */
-  playerLift(): number {
-    const p = this.player;
+  /** 角色当前的视觉高度（空中）。注意要按「被画的那个玩家」算，不能用本地玩家。 */
+  playerLift(p: Player = this.player): number {
     if (p.leapHangT > 0) return 30;
     if (p.leapT > 0) {
       const k = 1 - p.leapT / LEAP.airTime;

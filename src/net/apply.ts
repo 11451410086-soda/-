@@ -50,6 +50,10 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     p.invuln = pw.invuln ?? 0;
     p.eggTotal = pw.eggTotal ?? 0;
     p.leapHung = pw.leapHung ?? 0;
+    if (pw.rollDx !== undefined) {
+      p.rollDir.x = pw.rollDx;
+      p.rollDir.y = pw.rollDy ?? 0;
+    }
     // 塑造等级：原地合并，不在每拍分配新对象
     if (pw.shapes) {
       for (const key in p.shapes) {

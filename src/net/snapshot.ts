@@ -34,6 +34,8 @@ export function serializeWorld(w: World, events: unknown[] = []): unknown {
       shapes: p.shapes,
       eggTotal: p.eggTotal,
       leapHung: p.leapHung,
+      rollDx: p.rollDir.x,
+      rollDy: p.rollDir.y,
       skillCd: p.skillCd.slice(),
       mode: p.mode,
       throwTarget: p.throwTarget ? { x: p.throwTarget.x, y: p.throwTarget.y } : null,

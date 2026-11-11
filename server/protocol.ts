@@ -82,6 +82,9 @@ export interface PlayerWire {
   shapes?: Record<string, number>;
   eggTotal?: number;
   leapHung?: number;
+  /** 翻滚方向：客人端要在本地预测冲刺 */
+  rollDx?: number;
+  rollDy?: number;
   /** 预瞄状态：客人靠它画技能/武器预览（服务器权威模式可缺省） */
   mode?: string;
   throwTarget?: { x: number; y: number } | null;
