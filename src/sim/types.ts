@@ -125,6 +125,8 @@ export interface Enemy {
   facing: number;
   /** 陷地：剩余时间 > 0 时不可移动但可攻击 */
   rootT: number;
+  /** 施加陷地的玩家序号（黏脚等联动按这个人的塑造判定） */
+  rootBy?: number;
   /** 祛鳞的治疗冷却 */
   healCd: number;
   /** 减速剩余时间（土壤黏脚） */
@@ -152,6 +154,8 @@ export interface Laser {
   orb: boolean;
   /** 身份标签 */
   tag: Tag;
+  /** 发射者玩家序号：斥爆/电传播/动力分裂等联动按这个人的塑造判定 */
+  ownerIdx?: number;
   /** 是否已经在引力范围内引爆过 */
   detonated: boolean;
   /** 动力分裂：已分裂次数 */

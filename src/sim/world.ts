@@ -344,9 +344,9 @@ export class World {
     return Math.abs(angleDiff(angleTo(p.pos, pos), p.shieldAngle)) <= half;
   }
 
-  breakShield(): void {
-    const p = this.player;
-    if (this.hasShape('shield', 'unyield')) {
+  breakShield(target?: Player): void {
+    const p = target ?? this.player;
+    if (this.hasShape('shield', 'unyield', p)) {
       p.shieldHp = 1;
       return;
     }
@@ -362,7 +362,7 @@ export class World {
     if (p.meteorT > 0 || p.shieldHp <= 0) return dmg;
     if (!this.inShieldArc(pos, SHIELD_WEAPON.blockHalf, radius)) return dmg;
     p.shieldHp = Math.max(0, p.shieldHp - SHIELD_WEAPON.durPerHit);
-    if (p.shieldHp <= 0) this.breakShield();
+    if (p.shieldHp <= 0) this.breakShield(p);
     this.events.push({ type: 'shieldBlock', x: pos.x, y: pos.y });
     return dmg * (1 - SHIELD_WEAPON.blockDR);
   }
@@ -391,7 +391,7 @@ export class World {
     const p = target ?? this.player;
     if (p.meteorT > 0 || p.shieldHp <= 0) return dmg;
     p.shieldHp = Math.max(0, p.shieldHp - SHIELD_WEAPON.durPerHit);
-    if (p.shieldHp <= 0) this.breakShield();
+    if (p.shieldHp <= 0) this.breakShield(p);
     this.events.push({ type: 'shieldBlock', x: p.pos.x, y: p.pos.y });
     return dmg * (1 - SHIELD_WEAPON.blockDR);
   }
@@ -869,7 +869,11 @@ export class World {
       if (dist(e.pos, p.pos) > radius + e.radius) continue;
       // 陷地也是生理控制，按生理抗性缩时长
       const leapRoot = LEAP.root * (1 + bonus * 0.8) * (1 - this.ccResist(e));
-      if (leapRoot > 0.0001) e.rootT = Math.max(e.rootT, leapRoot);
+      if (leapRoot > 0.0001) {
+        e.rootT = Math.max(e.rootT, leapRoot);
+        // 记下是谁造成的陷地：黏脚/状况加深按这个人的塑造算
+        e.rootBy = this.players.indexOf(p);
+      }
       e.rootBonus = 1 + bonus;
     }
     p.leapHung = 0;
@@ -935,6 +939,7 @@ export class World {
         radius,
         orb: true,
         tag: 'flight',
+        ownerIdx: this.players.indexOf(p),
         lift,
         detonated: false,
         splitCount: 0,
@@ -1064,7 +1069,9 @@ export class World {
       e.atkTimer = Math.max(0, e.atkTimer - dt);
       if (e.rootT > 0) {
         e.rootT = Math.max(0, e.rootT - dt);
-        if (e.rootT <= 0 && this.hasSkillShape('leap', 'sticky')) {
+        // 黏脚按「施加陷地的那个人」的塑造判定，不是房主
+        const rootBy = e.rootBy !== undefined ? this.players[e.rootBy] : undefined;
+        if (e.rootT <= 0 && rootBy && this.hasSkillShape('leap', 'sticky', rootBy)) {
           // 黏脚是「减益效果」不是生理控制：吃减益抗性（强度与时长各按抗性缩）
           const sticky = this.applyDebuff(
             e,
@@ -1484,6 +1491,7 @@ export class World {
         radius: l.radius * 0.55,
         orb: true,
         tag: 'flight',
+        ownerIdx: l.ownerIdx,
         detonated: false,
         splitCount: 0,
         small: true,
@@ -1494,11 +1502,12 @@ export class World {
   }
 
   updateLasers(dt: number): void {
-    const p = this.player;
-
     for (const l of this.lasers) {
       if (l.life <= 0) continue;
 
+      // 子弹归谁：斥爆/电传播/动力分裂/状况加深都按发射者的塑造判定，
+      // 否则联机时这些联动只有房主能触发。
+      this.actor = l.ownerIdx !== undefined ? this.players[l.ownerIdx] : null;
       if (!l.detonated && this.checkDetonate(l)) l.detonated = true;
 
       const px = l.pos.x;
@@ -1545,14 +1554,22 @@ export class World {
       if (l.blast > 0) this.explodeAt(l.pos.x, l.pos.y, l.blast, l.damage);
       return false;
     });
+    this.actor = null;
   }
 
   updateShots(dt: number): void {
     for (const s of this.shots) {
       let slow = 1;
-      if (this.hasSkillShape('blackhole', 'slowfield')) {
-        const z = this.blackholeZone();
-        if (z && dist(s.pos, z.pos) <= z.radius) slow = BLACKHOLE_SHAPE.slowMult;
+      // 噬速力按「范围区归属者」的塑造判定，不是房主
+      const slowZone = this.blackholeZone();
+      const slowOwner = slowZone?.ownerIdx !== undefined ? this.players[slowZone.ownerIdx] : undefined;
+      if (
+        slowZone &&
+        slowOwner &&
+        this.hasSkillShape('blackhole', 'slowfield', slowOwner) &&
+        dist(s.pos, slowZone.pos) <= slowZone.radius
+      ) {
+        slow = BLACKHOLE_SHAPE.slowMult;
       }
       s.pos.x += s.vel.x * dt * slow;
       s.pos.y += s.vel.y * dt * slow;
