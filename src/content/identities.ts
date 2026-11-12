@@ -12,6 +12,9 @@
 
 export type IdentityGroup = 'cat' | 'attr' | 'num';
 
+/** 通用数值身份的归属，图鉴按它分卡 */
+export type NumOwner = 'weapon' | 'skill' | 'character';
+
 export interface IdentityDef {
   key: string;
   name: string;
@@ -20,6 +23,8 @@ export interface IdentityDef {
   attrs?: string[];
   /** 属性身份才有阵营：友方 / 敌方 */
   scoped?: boolean;
+  /** 数值身份：通用数值归谁用（武器 / 技能 / 角色），图鉴分组用 */
+  owner?: NumOwner;
 }
 
 export const IDENTITIES: Record<string, IdentityDef> = {
@@ -53,10 +58,10 @@ export const IDENTITIES: Record<string, IdentityDef> = {
   zoneTime: { key: 'zoneTime', name: '范围区时间', group: 'num', attrs: ['zone'] },
 
   /* ---------------- 数值身份：通用 ---------------- */
-  reloadTime: { key: 'reloadTime', name: '回复时间', group: 'num' },
-  capacity: { key: 'capacity', name: '容量', group: 'num' },
-  cooldown: { key: 'cooldown', name: '冷却时间', group: 'num' },
-  cooldownRate: { key: 'cooldownRate', name: '冷却缩减', group: 'num' },
+  reloadTime: { key: 'reloadTime', name: '回复时间', group: 'num', owner: 'weapon' },
+  capacity: { key: 'capacity', name: '容量', group: 'num', owner: 'weapon' },
+  cooldown: { key: 'cooldown', name: '冷却时间', group: 'num', owner: 'skill' },
+  cooldownRate: { key: 'cooldownRate', name: '冷却缩减', group: 'num', owner: 'skill' },
   controlTime: {
     key: 'controlTime',
     name: '控制时长',
@@ -69,13 +74,13 @@ export const IDENTITIES: Record<string, IdentityDef> = {
   debuffTime: { key: 'debuffTime', name: '减益时间', group: 'num', attrs: ['debuff'] },
 
   /* ---------------- 数值身份：角色 ---------------- */
-  maxHp: { key: 'maxHp', name: '生命值', group: 'num' },
-  speed: { key: 'speed', name: '移速', group: 'num' },
-  damageReduction: { key: 'damageReduction', name: '减伤率', group: 'num' },
-  stamina: { key: 'stamina', name: '体力值', group: 'num' },
-  staminaRegen: { key: 'staminaRegen', name: '体力回复率', group: 'num' },
-  hpRegen: { key: 'hpRegen', name: '生命回复', group: 'num' },
-  shield: { key: 'shield', name: '护盾值', group: 'num' },
+  maxHp: { key: 'maxHp', name: '生命值', group: 'num', owner: 'character' },
+  speed: { key: 'speed', name: '移速', group: 'num', owner: 'character' },
+  damageReduction: { key: 'damageReduction', name: '减伤率', group: 'num', owner: 'character' },
+  stamina: { key: 'stamina', name: '体力值', group: 'num', owner: 'character' },
+  staminaRegen: { key: 'staminaRegen', name: '体力回复率', group: 'num', owner: 'character' },
+  hpRegen: { key: 'hpRegen', name: '生命回复', group: 'num', owner: 'character' },
+  shield: { key: 'shield', name: '护盾值', group: 'num', owner: 'character' },
 };
 
 /** 阵营：属性身份才有（数值身份不带阵营） */

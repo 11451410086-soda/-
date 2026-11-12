@@ -302,16 +302,41 @@ function identityEntries(): Entry[] {
     nums: [],
   });
 
+  // 通用数值身份按归属分卡：武器 / 技能 / 角色
   const general = Object.values(IDENTITIES).filter(
     (d) => d.group === 'num' && (d.attrs ?? []).length === 0,
   );
-  out.push({
-    name: '通用数值身份',
-    sub: '不挂属性身份',
-    desc: general.map((g) => g.name).join(' · '),
-    attrs: [],
-    nums: [],
-  });
+  const ownerCards: Array<{ owner: 'weapon' | 'skill' | 'character'; name: string; desc: string }> = [
+    { owner: 'weapon', name: '武器数值身份', desc: '武器专用：装填与容量。' },
+    { owner: 'skill', name: '技能数值身份', desc: '技能专用：冷却相关。' },
+    {
+      owner: 'character',
+      name: '角色数值身份',
+      desc: '域卫与域兽共用：生命、移动、承受与体力。',
+    },
+  ];
+  for (const c of ownerCards) {
+    const items = general.filter((d) => d.owner === c.owner);
+    if (items.length === 0) continue;
+    out.push({
+      name: c.name,
+      sub: items.length + ' 项',
+      desc: c.desc + '　' + items.map((d) => d.name).join(' · '),
+      attrs: [],
+      nums: [],
+    });
+  }
+
+  const other = general.filter((d) => !d.owner);
+  if (other.length > 0) {
+    out.push({
+      name: '其他数值身份',
+      sub: '未归类',
+      desc: other.map((d) => d.name).join(' · '),
+      attrs: [],
+      nums: [],
+    });
+  }
 
   const roster: [string, string][] = [];
   for (const a of ABILITY_IDENTITIES) roster.push([a.name, tagsOf(a.key).join(' + ') || '纯数值']);
