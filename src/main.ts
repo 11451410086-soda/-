@@ -30,6 +30,9 @@ const screenEnd = document.getElementById('screen-end') as HTMLElement;
 const endTitle = document.getElementById('end-title') as HTMLElement;
 const endSub = document.getElementById('end-sub') as HTMLElement;
 const endStats = document.getElementById('end-stats') as HTMLElement;
+const screenDrop = document.getElementById('screen-drop') as HTMLElement;
+const dropTitle = document.getElementById('drop-title') as HTMLElement;
+const dropSub = document.getElementById('drop-sub') as HTMLElement;
 const hudEl = document.getElementById('hud') as HTMLElement;
 const pauseScreen = document.getElementById('pause') as HTMLElement;
 const pauseTitle = document.getElementById('pause-title') as HTMLElement;
@@ -437,6 +440,7 @@ function startGame(heroId: HeroId = 'guard'): void {
   camera.update(world.player.pos, 0, true);
   screenTitle.classList.add('hidden');
   screenEnd.classList.add('hidden');
+  hideDrop();
   prepScreen.classList.add('hidden');
   // 结算界面可能把它改成「等待房主重开」，开新局要还原
   const rb = document.getElementById('btn-restart') as HTMLButtonElement;
@@ -789,6 +793,7 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
       }
     },
     onFail: (r) => {
+      const wasLive = p2pMode && (world !== null || lobbyActive);
       p2pReady = false;
       p2pInput = null;
       // 断线后别让大厅还显示对方「已就绪」
@@ -796,6 +801,8 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
       lobbyRemoteHost = null;
       if (lobbyActive) renderCoopLobby();
       setNetStatus('联机失败：' + r, 'bad');
+      // 正在玩或在大厅里：给一个整屏提示，别让画面僵在那儿
+      if (wasLive) showDrop(r);
     },
     onStatus: (st, detail) => {
       if (st === 'connected') return;
@@ -891,6 +898,7 @@ function enterCoopLobby(): void {
   screenTitle.classList.add('hidden');
   prepScreen.classList.add('hidden');
   screenEnd.classList.add('hidden');
+  hideDrop();
   hudEl.classList.remove('on');
   coop.show(p2pRole, selectedWeapon, p2pRoom);
   renderCoopLobby();
@@ -898,10 +906,32 @@ function enterCoopLobby(): void {
   if (document.hidden) hiddenLoopStart();
 }
 
+/** 联机断了：整屏提示，避免画面僵在战场上没人知道发生了什么 */
+function showDrop(reason: string): void {
+  const isGuest = p2pRole === 'guest';
+  dropTitle.textContent = world ? '连接中断' : '联机中断';
+  dropSub.textContent = isGuest
+    ? '与房主的连接已断开。' + (reason ? '（' + reason + '）' : '')
+    : '与客人的连接已断开。' + (reason ? '（' + reason + '）' : '');
+  screenDrop.classList.remove('hidden');
+  hudEl.classList.remove('on');
+  coop.hide();
+}
+
+function hideDrop(): void {
+  screenDrop.classList.add('hidden');
+}
+
+document.getElementById('btn-drop-back')!.addEventListener('click', () => {
+  hideDrop();
+  leaveCoop();
+});
+
 function leaveCoop(): void {
   lobbyActive = false;
   lobbyStartAt = null;
   coop.hide();
+  hideDrop();
   if (p2p) p2p.close();
   p2p = null;
   p2pReady = false;

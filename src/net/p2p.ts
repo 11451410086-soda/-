@@ -113,6 +113,13 @@ export class P2P {
   private relayAnnounceCount = 0;
   /** 是否已收到对方的中继报文（握手完成） */
   private peerRelaySeen = false;
+  /** 是否曾经真正连上过（区分「没连上→试中继」和「连上后又断了→直接报错」） */
+  private everConnected = false;
+  /** 断开宽限期：WebRTC 的 disconnected 可能是暂时的 */
+  private disconnectTimer: number | null = null;
+  /** 中继模式下最后一次收到对方报文的时间（用于判断对面掉线） */
+  private lastPeerAt = 0;
+  private relayHeartbeat: number | null = null;
 
   constructor(opts: P2POptions) {
     this.opts = opts;
@@ -221,12 +228,50 @@ export class P2P {
   private becomeConnected(): void {
     if (this.connected) return;
     this.connected = true;
+    this.everConnected = true;
     this.clearConnectTimer();
+    this.clearDisconnectGrace();
+    if (this.relayMode) this.startRelayHeartbeat();
     this.opts.onStatus?.(
       'connected',
       this.relayMode ? '已连接（中继模式，延迟略高）' : '已连接',
     );
     this.opts.onOpen();
+  }
+
+  /** WebRTC 报 disconnected 后给几秒缓冲，还不恢复就当断开 */
+  private armDisconnectGrace(): void {
+    if (this.disconnectTimer !== null) return;
+    this.disconnectTimer = window.setTimeout(() => {
+      this.disconnectTimer = null;
+      const st = this.pc?.connectionState;
+      if (!this.closed && this.connected && st !== 'connected') this.fail('对方已断开');
+    }, 4000);
+  }
+
+  private clearDisconnectGrace(): void {
+    if (this.disconnectTimer !== null) window.clearTimeout(this.disconnectTimer);
+    this.disconnectTimer = null;
+  }
+
+  /**
+   * 中继模式没有 ICE 状态可看：靠「多久没收到对方报文」判断掉线。
+   * 大厅和对局里双方都持续有报文，静默超过 6 秒就当对面走了。
+   */
+  private startRelayHeartbeat(): void {
+    if (this.relayHeartbeat !== null) return;
+    this.lastPeerAt = Date.now();
+    this.relayHeartbeat = window.setInterval(() => {
+      if (this.closed || !this.relayMode) return;
+      if (Date.now() - this.lastPeerAt > 6000) {
+        this.fail('对方已断开');
+      }
+    }, 2000);
+  }
+
+  private stopRelayHeartbeat(): void {
+    if (this.relayHeartbeat !== null) window.clearInterval(this.relayHeartbeat);
+    this.relayHeartbeat = null;
   }
 
   private scheduleSignalRetry(): void {
@@ -282,6 +327,8 @@ export class P2P {
     if (this.wsRetry !== null) window.clearTimeout(this.wsRetry);
     if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
     this.stopRelayAnnounce();
+    this.stopRelayHeartbeat();
+    this.clearDisconnectGrace();
     this.joinTimer = null;
     this.connectTimer = null;
     this.wsRetry = null;
@@ -335,6 +382,7 @@ export class P2P {
       if ((cand as RelayEnvelope).relay === 1) {
         // 收到对方的中继报文：握手完成，停掉广播；如果自己还在直连就一起切过来
         this.peerRelaySeen = true;
+        this.lastPeerAt = Date.now();
         this.stopRelayAnnounce();
         if (cand.kind === 'mode') {
           this.switchToRelay(false);
@@ -443,9 +491,13 @@ export class P2P {
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState;
       this.log('connection', st);
-      if (st === 'failed') this.fail('直连失败（可能是 NAT / 网络限制）');
-      else if (st === 'disconnected' && this.connected) {
+      if (st === 'failed') {
+        this.fail(this.everConnected ? '对方已断开' : '直连失败（可能是 NAT / 网络限制）');
+      } else if (st === 'disconnected' && this.connected) {
         this.opts.onStatus?.('failed', '连接不稳定…');
+        this.armDisconnectGrace();
+      } else if (st === 'connected') {
+        this.clearDisconnectGrace();
       }
     };
 
@@ -494,8 +546,8 @@ export class P2P {
 
   private fail(reason: string): void {
     if (this.closed) return;
-    // 直连失败/超时先尝试中继，别直接判死刑
-    if (!this.relayMode && reason !== '对方已断开') {
+    // 「从没连上过」的失败才值得改走中继；连上后又断的直接报错
+    if (!this.everConnected && !this.relayMode && reason !== '对方已断开') {
       this.log('直连失败，改走中继：', reason);
       this.switchToRelay(true);
       return;
@@ -503,6 +555,9 @@ export class P2P {
     this.log('fail:', reason);
     this.connected = false;
     this.clearConnectTimer();
+    this.clearDisconnectGrace();
+    this.stopRelayHeartbeat();
+    this.stopRelayAnnounce();
     const now = Date.now();
     if (now - this.lastFailAt < 3000) return;
     this.lastFailAt = now;
