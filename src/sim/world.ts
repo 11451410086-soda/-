@@ -1069,8 +1069,8 @@ export class World {
       e.atkTimer = Math.max(0, e.atkTimer - dt);
       if (e.rootT > 0) {
         e.rootT = Math.max(0, e.rootT - dt);
-        // 黏脚按「施加陷地的那个人」的塑造判定，不是房主
-        const rootBy = e.rootBy !== undefined ? this.players[e.rootBy] : undefined;
+        // 黏脚按「施加陷地的那个人」的塑造判定；没有归属信息时退回本地玩家
+        const rootBy = e.rootBy !== undefined ? this.players[e.rootBy] : this.player;
         if (e.rootT <= 0 && rootBy && this.hasSkillShape('leap', 'sticky', rootBy)) {
           // 黏脚是「减益效果」不是生理控制：吃减益抗性（强度与时长各按抗性缩）
           const sticky = this.applyDebuff(
@@ -1560,9 +1560,11 @@ export class World {
   updateShots(dt: number): void {
     for (const s of this.shots) {
       let slow = 1;
-      // 噬速力按「范围区归属者」的塑造判定，不是房主
+      // 噬速力按「范围区归属者」的塑造判定，不是房主；
+      // 没有归属信息时（老快照/测试）退回本地玩家
       const slowZone = this.blackholeZone();
-      const slowOwner = slowZone?.ownerIdx !== undefined ? this.players[slowZone.ownerIdx] : undefined;
+      const slowOwner =
+        slowZone?.ownerIdx !== undefined ? this.players[slowZone.ownerIdx] : this.player;
       if (
         slowZone &&
         slowOwner &&
