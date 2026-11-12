@@ -1439,13 +1439,22 @@ body {
 .codex-row {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   color: #8fa8c2;
   padding: 1px 0;
 }
 
+/* 标签列不换行，长内容交给右侧换行 */
+.codex-row span {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
 .codex-row b {
   color: #ffd166;
+  text-align: right;
+  flex: 1 1 auto;
 }
 
 .codex-tags {

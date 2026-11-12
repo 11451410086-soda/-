@@ -302,6 +302,36 @@ function identityEntries(): Entry[] {
     nums: [],
   });
 
+  // 属性数值身份：挂在属性身份下的数值，按「数值类型」分组
+  const attrNums = Object.values(IDENTITIES).filter(
+    (d) => d.group === 'num' && (d.attrs ?? []).length > 0,
+  );
+  const kindOf = (name: string): string => {
+    // 用后缀判断：范围区时间要归「时间」，不能因为带「范围」就进「范围」
+    if (name.endsWith('伤害')) return '伤害';
+    if (name.endsWith('间隔')) return '间隔';
+    if (name.endsWith('范围')) return '范围';
+    if (name.endsWith('加成')) return '加成';
+    if (name.endsWith('时长')) return '控制';
+    if (name.endsWith('时间')) return '时间';
+    return '其他';
+  };
+  const kindOrder = ['伤害', '间隔', '范围', '时间', '控制', '加成', '其他'];
+  const kindRows: [string, string][] = [];
+  for (const kind of kindOrder) {
+    const items = attrNums.filter((d) => kindOf(d.name) === kind);
+    if (items.length > 0) kindRows.push([kind, items.map((d) => d.name).join(' · ')]);
+  }
+  out.push({
+    name: '属性数值身份',
+    sub: attrNums.length + ' 项',
+    desc:
+      '挂在属性身份下的数值，名字由「属性 + 数值类型」拼成（飞行物伤害、近战击范围…）。' +
+      '同一类型下按属性各有一份，改哪个属性的数值就改哪个身份。',
+    attrs: [],
+    nums: kindRows,
+  });
+
   // 通用数值身份按归属分卡：武器 / 技能 / 角色
   const general = Object.values(IDENTITIES).filter(
     (d) => d.group === 'num' && (d.attrs ?? []).length === 0,
