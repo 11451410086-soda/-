@@ -102,6 +102,7 @@ export class P2P {
   private lastOfferAt = 0;
   private lastFailAt = 0;
   private wsRetry: number | null = null;
+  private wsRetryCount = 0;
   /** 走服务端中继（直连打不通时） */
   private relayMode = false;
   private relayTimer: number | null = null;
@@ -136,6 +137,7 @@ export class P2P {
     this.ws = ws;
 
     ws.onopen = () => {
+      this.wsRetryCount = 0;
       this.sendSignal({ t: 'p2p-join', room: this.opts.room });
       this.opts.onStatus?.(
         'waiting',
