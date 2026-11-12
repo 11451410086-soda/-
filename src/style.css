@@ -984,6 +984,15 @@ body {
   margin-top: 22px;
 }
 
+/* 选武器界面的按钮行：出发 + 返回 */
+.prep-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 22px;
+}
+
 .prep-title {
   font-size: 12px;
   letter-spacing: 0.18em;

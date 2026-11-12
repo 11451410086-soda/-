@@ -152,6 +152,11 @@ window.addEventListener('keydown', (e) => {
       lobby.classList.add("hidden");
       return;
     }
+    if (!prepScreen.classList.contains('hidden')) {
+      // 选武器界面：Esc 等于「返回」
+      backFromPrep();
+      return;
+    }
     if (codex.isOpen()) {
       codex.hide();
       return;
@@ -487,6 +492,17 @@ document.getElementById('btn-deploy')!.addEventListener('click', () => {
   }
   startGame(lastHero);
 });
+
+/** 从选武器界面返回主菜单（联机时顺便断开房间） */
+function backFromPrep(): void {
+  prepScreen.classList.add('hidden');
+  if (p2pMode || lobbyActive) {
+    leaveCoop();
+    return;
+  }
+  screenTitle.classList.remove('hidden');
+}
+document.getElementById('btn-prep-back')!.addEventListener('click', () => backFromPrep());
 document.getElementById('btn-codex')!.addEventListener('click', () => codex.show());
 document.getElementById('btn-restart')!.addEventListener('click', () => {
   if (p2pRole === 'guest' && p2pMode) return;
