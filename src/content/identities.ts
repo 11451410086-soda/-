@@ -109,6 +109,28 @@ export function numsOf(attrKey: string): IdentityDef[] {
   );
 }
 
+/**
+ * 取某个事物的属性身份全名，如 ['友方范围区', '友方生理控制']。
+ * key 同时支持 ABILITY_IDENTITIES 与 SHAPE_IDENTITIES。
+ */
+export function tagsOf(key: string): string[] {
+  const hit =
+    ABILITY_IDENTITIES.find((a) => a.key === key) ?? SHAPE_IDENTITIES.find((a) => a.key === key);
+  if (!hit) return [];
+  return hit.attrs.map((a) => attrName(a.attr, a.scope));
+}
+
+/** 仅用于数值身份分组展示 */
+export function numsByGroup(): Record<string, IdentityDef[]> {
+  const out: Record<string, IdentityDef[]> = {};
+  for (const d of Object.values(IDENTITIES)) {
+    if (d.group !== 'num') continue;
+    const g = (d.attrs ?? [])[0] ?? 'general';
+    (out[g] ??= []).push(d);
+  }
+  return out;
+}
+
 /** 校验：每个属性身份都必须至少有一个对应的数值身份 */
 export function validateIdentities(): string[] {
   const attrs = Object.values(IDENTITIES).filter((d) => d.group === 'attr');

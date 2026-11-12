@@ -16,6 +16,26 @@ import {
   WEAPON_SHAPES,
 } from '../content/defs';
 import type { EnemyKind } from '../content/defs';
+import {
+  ABILITY_IDENTITIES,
+  IDENTITIES,
+  RESISTANCES,
+  SHAPE_IDENTITIES,
+  attrName,
+  numsOf,
+  tagsOf,
+} from '../content/identities';
+
+/** 属性身份的一句话说明（图鉴用） */
+const ATTR_DESC: Record<string, string> = {
+  flight: '以弹体形式飞行的攻击，可被减速、拦截或加成。',
+  meleeHit: '贴身或扇形范围内的直接打击。',
+  zone: '持续存在的区域效果（吸引区、毒雾），有范围与存续时间。',
+  mindControl: '作用于心智的控制（恐惧/嘲讽等）。当前版本没有来源，预留。',
+  bodyControl: '作用于身体的控制：牵引、击退、减速、陷地、眩晕。',
+  buff: '提升自身或友方能力的正面效果。',
+  debuff: '削弱目标的负面效果（减伤、减速等）。',
+};
 
 /** 图鉴条目：属性身份 + 数值身份都写清楚 */
 interface Entry {
@@ -33,7 +53,7 @@ const WEAPONS: Entry[] = [
     name: RAIL_WEAPON.name,
     sub: '远程',
     desc: '射出圆形电磁球，命中造成伤害。',
-    attrs: ['远程', '飞行物'],
+    attrs: ['远程', ...tagsOf('railgun')],
     nums: [
       ['飞行物伤害', RAIL_WEAPON.damage + ''],
       ['飞行物间隔', RAIL_WEAPON.fireInterval + ' 秒'],
@@ -46,15 +66,15 @@ const WEAPONS: Entry[] = [
     name: SHIELD_WEAPON.name,
     sub: '近战',
     desc: '身侧有可转向的抵挡范围，挡下飞行物与近战击；左键盾击击退敌人。耐久耗尽破碎，进入陨星状态。',
-    attrs: ['近战', '近战击', '生理控制', '减益效果', '增益效果'],
+    attrs: ['近战', ...tagsOf('shieldStrike'), ...tagsOf('shieldGuard'), ...tagsOf('shieldMeteor')],
     nums: [
       ['近战击伤害', SHIELD_WEAPON.damage + ''],
       ['近战击间隔', SHIELD_WEAPON.interval + ' 秒'],
       ['近战击范围', SHIELD_WEAPON.range + ''],
       ['控制时长', SHIELD_WEAPON.knockTime + ' 秒'],
       ['生命值（耐久）', SHIELD_WEAPON.durabilityMax + ''],
-      ['减益加成', '抵挡伤害 −' + Math.round(SHIELD_WEAPON.blockDR * 100) + '%'],
-      ['增益加成', '陨星减伤 ' + Math.round(SHIELD_WEAPON.meteorDR * 100) + '%'],
+      ['增益加成（抵挡）', '抵挡伤害 −' + Math.round(SHIELD_WEAPON.blockDR * 100) + '%'],
+      ['增益加成（陨星）', '陨星减伤 ' + Math.round(SHIELD_WEAPON.meteorDR * 100) + '%'],
     ],
   },
 ];
@@ -64,7 +84,7 @@ function weaponShapeEntries(): Entry[] {
     charge: {
       attrs: ['增益效果'],
       nums: [
-        ['飞行物伤害', '蓄满 ×2'],
+        ['飞行物伤害', '蓄满 ×2.5'],
         ['飞行物范围', '蓄满 ×1.35'],
       ],
     },
@@ -77,7 +97,7 @@ function weaponShapeEntries(): Entry[] {
       nums: [['飞行物伤害', Math.round(RAIL_SHAPE.splitDamageRatio * 100) + '%']],
     },
     pierce: { attrs: ['增益效果'], nums: [] },
-    ground: { attrs: ['减益效果'], nums: [['减益加成', '减伤 ' + Math.round(SHIELD_WEAPON.groundDR * 100) + '%']] },
+    ground: { attrs: ['减益效果'], nums: [['增益加成', '减伤 ' + Math.round(SHIELD_WEAPON.groundDR * 100) + '%']] },
     safety: { attrs: ['增益效果'], nums: [['增益加成', '生命回复 5/秒']] },
     unyield: { attrs: ['增益效果'], nums: [] },
   };
@@ -92,8 +112,8 @@ function weaponShapeEntries(): Entry[] {
       out.push({
         name: s.name,
         sub: (names[weaponId] ?? weaponId) + ' · 塑造',
-        desc: s.levels.join(' '),
-        attrs: m.attrs,
+        desc: s.levels.join(' ') + (tagsOf(s.id).length ? '' : '（纯数值改造，不带属性身份）'),
+        attrs: tagsOf(s.id),
         nums: m.nums,
       });
     }
@@ -106,7 +126,7 @@ const SKILL_ENTRIES: Entry[] = [
     name: SKILLS.blackhole.name,
     sub: '冷却 ' + SKILLS.blackhole.cd + ' 秒',
     desc: '投出黑洞雷，落点生成吸引区：持续牵引域兽并周期造成伤害。',
-    attrs: ['范围区', '生理控制'],
+    attrs: [...tagsOf('blackholeThrow'), ...tagsOf('blackholeZone')],
     nums: [
       ['范围区伤害', BLACKHOLE.tickDamage + ' / 次'],
       ['范围区范围', BLACKHOLE.radius + ''],
@@ -121,7 +141,7 @@ const SKILL_ENTRIES: Entry[] = [
     name: SKILLS.leap.name,
     sub: '冷却 ' + SKILLS.leap.cd + ' 秒',
     desc: '跃向目标点坠落，造成伤害并使目标陷地。',
-    attrs: ['近战击', '生理控制'],
+    attrs: tagsOf('leap'),
     nums: [
       ['近战击伤害', LEAP.damage + ''],
       ['近战击范围', SKILLS.leap.radius + ''],
@@ -134,7 +154,7 @@ const SKILL_ENTRIES: Entry[] = [
     name: SKILLS.stone.name,
     sub: '冷却 ' + SKILLS.stone.cd + ' 秒',
     desc: '一段时间内大幅减伤，但移速降低。',
-    attrs: ['增益效果', '减益效果'],
+    attrs: tagsOf('stone'),
     nums: [
       ['增益加成', '减伤 +' + Math.round(STONE.dr * 100) + '%'],
       ['减益加成', '移速 −' + Math.round((1 - STONE.speedMult) * 100) + '%'],
@@ -202,8 +222,8 @@ function skillShapeEntries(): Entry[] {
       out.push({
         name: s.name,
         sub: SKILLS[skillId].name + ' · 塑造',
-        desc: s.desc,
-        attrs: m.attrs,
+        desc: s.desc + (tagsOf(s.id).length ? '' : '（纯数值改造，不带属性身份）'),
+        attrs: tagsOf(s.id),
         nums: m.nums,
       });
     }
@@ -213,10 +233,10 @@ function skillShapeEntries(): Entry[] {
 
 function enemyEntries(): Entry[] {
   const meta: Record<EnemyKind, { attrs: string[]; desc: string }> = {
-    puze: { attrs: ['近战击'], desc: '近战单位，蓄力后劈出扇形攻击。' },
-    shiqia: { attrs: ['飞行物'], desc: '远程射手，会保持距离射击。' },
-    yueji: { attrs: ['飞行物', '范围区'], desc: '朝玩家投掷污染瓶，落地生成持续伤害的毒雾。' },
-    qulin: { attrs: ['增益效果'], desc: '治疗附近的域兽，自身没有攻击能力。' },
+    puze: { attrs: tagsOf('puzeFan'), desc: '近战单位，蓄力后劈出扇形攻击。' },
+    shiqia: { attrs: tagsOf('shiqiaShot'), desc: '远程射手，会保持距离射击。' },
+    yueji: { attrs: [...tagsOf('yuejiBottle'), ...tagsOf('yuejiZone')], desc: '朝玩家投掷污染瓶，落地生成持续伤害的毒雾。' },
+    qulin: { attrs: tagsOf('qulinHeal'), desc: '治疗附近的域兽，自身没有攻击能力。' },
   };
   return (Object.keys(ENEMIES) as EnemyKind[]).map((k) => {
     const e = ENEMIES[k];
@@ -245,7 +265,70 @@ function enemyEntries(): Entry[] {
   });
 }
 
+/* ---------------- 身份大全 ---------------- */
+
+function identityEntries(): Entry[] {
+  const out: Entry[] = [];
+
+  out.push({
+    name: '阵营规则',
+    sub: '只有属性身份分友方 / 敌方',
+    desc:
+      '属性身份记「效果属于哪一方」，不记「对谁有利」：玩家投出的黑洞雷是友方范围区（作用对象是敌方），' +
+      '祛鳞治疗是敌方增益效果（治疗域兽）。数值身份中立，不带阵营，阵营从来源继承。',
+    attrs: ['友方', '敌方'],
+    nums: [],
+  });
+
+  for (const d of Object.values(IDENTITIES)) {
+    if (d.group !== 'attr') continue;
+    const numNames = numsOf(d.key).map((n) => n.name).join(' · ');
+    out.push({
+      name: d.name,
+      sub: '属性身份',
+      desc: (ATTR_DESC[d.key] ?? '') + (numNames ? '　挂载的数值身份：' + numNames : ''),
+      attrs: [attrName(d.key, 'ally'), attrName(d.key, 'enemy')],
+      nums: [],
+    });
+  }
+
+  out.push({
+    name: '抗性身份',
+    sub: '百分比 · 100% 即绝对免疫',
+    desc: Object.values(RESISTANCES)
+      .map((r) => r.name + '：' + r.desc)
+      .join('；'),
+    attrs: Object.values(RESISTANCES).map((r) => r.name),
+    nums: [],
+  });
+
+  const general = Object.values(IDENTITIES).filter(
+    (d) => d.group === 'num' && (d.attrs ?? []).length === 0,
+  );
+  out.push({
+    name: '通用数值身份',
+    sub: '不挂属性身份',
+    desc: general.map((g) => g.name).join(' · '),
+    attrs: [],
+    nums: [],
+  });
+
+  const roster: [string, string][] = [];
+  for (const a of ABILITY_IDENTITIES) roster.push([a.name, tagsOf(a.key).join(' + ') || '纯数值']);
+  for (const a of SHAPE_IDENTITIES) roster.push([a.name + '（塑造）', tagsOf(a.key).join(' + ') || '纯数值']);
+  out.push({
+    name: '事物身份一览',
+    sub: ABILITY_IDENTITIES.length + ' 项战斗事物 + ' + SHAPE_IDENTITIES.length + ' 个塑造',
+    desc: '属性身份全名，按「阵营 + 属性」显示。',
+    attrs: [],
+    nums: roster,
+  });
+
+  return out;
+}
+
 const TABS: { key: string; title: string; build: () => Entry[] }[] = [
+  { key: 'ident', title: '身份大全', build: identityEntries },
   { key: 'weapon', title: '武器', build: () => WEAPONS },
   { key: 'wshape', title: '武器塑造', build: weaponShapeEntries },
   { key: 'skill', title: '技能', build: () => SKILL_ENTRIES },
@@ -303,14 +386,15 @@ export class Codex {
     this.listEl.innerHTML = tab
       .build()
       .map((e) => {
-        const attrs = e.attrs.map((a) => `<i>${a}</i>`).join('');
+        const tags = [...new Set(e.attrs)];
+        const attrs = tags.map((a) => `<i>${a}</i>`).join('');
         const nums = e.nums
           .map(([k, v]) => `<div class="codex-row"><span>${k}</span><b>${v}</b></div>`)
           .join('');
         return `<div class="codex-card">
           <div class="codex-head"><b>${e.name}</b><span>${e.sub ?? ''}</span></div>
           <p class="codex-desc">${e.desc}</p>
-          <div class="codex-block"><div class="codex-label">属性身份</div><div class="codex-tags">${attrs}</div></div>
+          ${attrs ? `<div class="codex-block"><div class="codex-label">属性身份</div><div class="codex-tags">${attrs}</div></div>` : ''}
           ${nums ? `<div class="codex-block"><div class="codex-label">数值身份</div>${nums}</div>` : ''}
         </div>`;
       })
