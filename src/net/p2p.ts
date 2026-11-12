@@ -24,7 +24,7 @@ type SignalMsg =
  */
 interface RelayEnvelope {
   relay: 1;
-  kind: 'mode' | 'data';
+  kind: 'mode' | 'data' | 'bye';
   data?: unknown;
 }
 
@@ -118,8 +118,7 @@ export class P2P {
   /** 断开宽限期：WebRTC 的 disconnected 可能是暂时的 */
   private disconnectTimer: number | null = null;
   /** 中继模式下最后一次收到对方报文的时间（用于判断对面掉线） */
-  private lastPeerAt = 0;
-  private relayHeartbeat: number | null = null;
+
 
   constructor(opts: P2POptions) {
     this.opts = opts;
@@ -191,6 +190,15 @@ export class P2P {
       this.log('直连未通，切换到服务端中继');
       if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
       this.relayTimer = null;
+      // 中继生效后 WebRTC 就没用了：关掉它，否则它超时报 failed/disconnected
+      // 会把「对方已断开」误判出来（线上踩过：一连上就弹联机中断）
+      this.clearDisconnectGrace();
+      this.stateDc?.close();
+      this.inputDc?.close();
+      this.pc?.close();
+      this.stateDc = null;
+      this.inputDc = null;
+      this.pc = null;
     }
     // 中继模式下收到对方的任何中继报文，就说明握手完成，不用再广播了
     if (notify) this.startRelayAnnounce();
@@ -231,7 +239,8 @@ export class P2P {
     this.everConnected = true;
     this.clearConnectTimer();
     this.clearDisconnectGrace();
-    if (this.relayMode) this.startRelayHeartbeat();
+    // 中继模式不做「静默超时」判定：对面切后台时帧循环会停，
+    // 数据自然变少，误判成掉线比漏判更糟（线上踩过：一连上就弹中断）。
     this.opts.onStatus?.(
       'connected',
       this.relayMode ? '已连接（中继模式，延迟略高）' : '已连接',
@@ -244,6 +253,7 @@ export class P2P {
     if (this.disconnectTimer !== null) return;
     this.disconnectTimer = window.setTimeout(() => {
       this.disconnectTimer = null;
+      if (this.relayMode) return;
       const st = this.pc?.connectionState;
       if (!this.closed && this.connected && st !== 'connected') this.fail('对方已断开');
     }, 4000);
@@ -252,26 +262,6 @@ export class P2P {
   private clearDisconnectGrace(): void {
     if (this.disconnectTimer !== null) window.clearTimeout(this.disconnectTimer);
     this.disconnectTimer = null;
-  }
-
-  /**
-   * 中继模式没有 ICE 状态可看：靠「多久没收到对方报文」判断掉线。
-   * 大厅和对局里双方都持续有报文，静默超过 6 秒就当对面走了。
-   */
-  private startRelayHeartbeat(): void {
-    if (this.relayHeartbeat !== null) return;
-    this.lastPeerAt = Date.now();
-    this.relayHeartbeat = window.setInterval(() => {
-      if (this.closed || !this.relayMode) return;
-      if (Date.now() - this.lastPeerAt > 6000) {
-        this.fail('对方已断开');
-      }
-    }, 2000);
-  }
-
-  private stopRelayHeartbeat(): void {
-    if (this.relayHeartbeat !== null) window.clearInterval(this.relayHeartbeat);
-    this.relayHeartbeat = null;
   }
 
   private scheduleSignalRetry(): void {
@@ -311,7 +301,7 @@ export class P2P {
   }
 
   /** 把 P2P 报文包成中继信封，借 p2p-ice 让信令服务器转发 */
-  private sendRelay(env: Partial<RelayEnvelope> & { kind: 'mode' | 'data' }): void {
+  private sendRelay(env: Partial<RelayEnvelope> & { kind: 'mode' | 'data' | 'bye' }): void {
     this.sendSignal({
       t: 'p2p-ice',
       room: this.opts.room,
@@ -320,6 +310,8 @@ export class P2P {
   }
 
   close(): void {
+    // 中继模式先打个招呼，对方能立刻知道是主动离开
+    if (this.relayMode && !this.closed) this.sendRelay({ kind: 'bye' });
     this.closed = true;
     this.connected = false;
     if (this.joinTimer !== null) window.clearInterval(this.joinTimer);
@@ -327,7 +319,6 @@ export class P2P {
     if (this.wsRetry !== null) window.clearTimeout(this.wsRetry);
     if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
     this.stopRelayAnnounce();
-    this.stopRelayHeartbeat();
     this.clearDisconnectGrace();
     this.joinTimer = null;
     this.connectTimer = null;
@@ -382,9 +373,10 @@ export class P2P {
       if ((cand as RelayEnvelope).relay === 1) {
         // 收到对方的中继报文：握手完成，停掉广播；如果自己还在直连就一起切过来
         this.peerRelaySeen = true;
-        this.lastPeerAt = Date.now();
         this.stopRelayAnnounce();
-        if (cand.kind === 'mode') {
+        if (cand.kind === 'bye') {
+          this.fail('对方已离开');
+        } else if (cand.kind === 'mode') {
           this.switchToRelay(false);
         } else {
           this.switchToRelay(false);
@@ -491,6 +483,8 @@ export class P2P {
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState;
       this.log('connection', st);
+      // 已经走中继：这条 WebRTC 连接与游戏无关，状态怎么变都别管
+      if (this.relayMode) return;
       if (st === 'failed') {
         this.fail(this.everConnected ? '对方已断开' : '直连失败（可能是 NAT / 网络限制）');
       } else if (st === 'disconnected' && this.connected) {
@@ -556,7 +550,6 @@ export class P2P {
     this.connected = false;
     this.clearConnectTimer();
     this.clearDisconnectGrace();
-    this.stopRelayHeartbeat();
     this.stopRelayAnnounce();
     const now = Date.now();
     if (now - this.lastFailAt < 3000) return;
