@@ -112,3 +112,14 @@
   - 状态栏显示「已连接（中继模式，延迟略高）」。
 - 调试开关：`?relay=1` 强制走中继（本地两个标签页就能验证整条链路）。
 - 局限：中继延迟取决于 Render 节点（100~300ms 量级），比直连差；想恢复直连需要自建 TURN。
+
+### I. 信令服务与部署
+- **现状**：信令/中继跑在 Render 免费实例 `wss://jie-yu-jing-hua.onrender.com`（`server/index.ts`）。免费实例**闲置 15 分钟会休眠**，冷启动 30~60 秒，期间客户端会一直显示「信令服务器无响应」。
+- **缓解**：
+  - 客户端连不上时自动发 HTTP 请求唤醒实例（`warmUpServer`）。
+  - 页面开着时每 4 分钟 ping 一次（`pingSignal`），整个开黑期间不会休眠。
+  - 状态栏提示带重试次数，并说明「服务器可能在休眠，最多约 1 分钟」。
+- **彻底方案**：`worker/` 目录是 Cloudflare Worker + Durable Object 版（协议完全一致、不会休眠）。
+  - 部署：`cd worker && npx wrangler login && npx wrangler deploy`
+  - 切换：改 `.github/workflows/pages.yml` 里的 `VITE_SIGNAL_URL`，或临时用 `?signal=wss://xxx.workers.dev` 验证。
+- 客户端信令地址优先级：`?signal=` > 构建注入 `VITE_SIGNAL_URL` > 同源（本地开发连 3001）。

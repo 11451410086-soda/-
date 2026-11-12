@@ -690,11 +690,18 @@ function signalBase(): string {
 
 /** 先把休眠的免费实例戳醒，免得建房时卡在「连接信令服务器」 */
 let signalWarmed = false;
+function pingSignal(): void {
+  const http = signalBase().replace(/^ws/, 'http');
+  void fetch(http + '/', { mode: 'no-cors', cache: 'no-store' }).catch(() => undefined);
+}
 function warmSignal(): void {
   if (signalWarmed) return;
   signalWarmed = true;
-  const http = signalBase().replace(/^ws/, 'http');
-  void fetch(http + '/', { mode: 'no-cors', cache: 'no-store' }).catch(() => undefined);
+  pingSignal();
+}
+// 免费实例闲置 15 分钟就休眠：页面开着就每 4 分钟戳一下，别让朋友等冷启动
+if (typeof window !== 'undefined') {
+  window.setInterval(pingSignal, 4 * 60 * 1000);
 }
 
 function startP2P(room: string, role: 'host' | 'guest'): void {
