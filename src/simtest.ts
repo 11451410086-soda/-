@@ -348,6 +348,55 @@ const input = {
   }
   check("斥爆：子弹穿过范围继续飞", maxX > 530);
 
+  // 斥爆挂在「范围区主人」身上：队友的子弹也能引爆
+  {
+    const wd = makeWorld();
+    wd.addPlayer("railgun");
+    const guest = wd.players[1];
+    guest.coins = 500;
+    const prev = wd.localIndex;
+    wd.localIndex = 1;
+    wd.buySkillShape("blackhole", "detonate");
+    wd.localIndex = prev;
+    // 客人投的范围区（ownerIdx=1）
+    wd.zones.push({ id: 1, owner: "player", ownerIdx: 1, pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+    // 房主的子弹穿过
+    wd.lasers.push({
+      pos: { x: 520, y: 150 }, vel: { x: 0, y: 0 }, angle: 0, damage: 10, pierce: 0,
+      hitIds: [], life: 1, travel: 0, blast: 0, radius: 9, orb: true, tag: "flight",
+      ownerIdx: 0, lift: 0, detonated: false, splitCount: 0, small: false, homing: false, targetZone: 0,
+    });
+    wd.updateLasers(1 / 60);
+    check(
+      "斥爆：范围区主人买了，队友的子弹也能引爆",
+      wd.events.some((e: any) => e.type === "detonate"),
+    );
+  }
+
+  // 房主投的区没买斥爆 → 客人有斥爆也不能引爆
+  {
+    const we = makeWorld();
+    we.addPlayer("railgun");
+    const guest = we.players[1];
+    guest.coins = 500;
+    const prev = we.localIndex;
+    we.localIndex = 1;
+    we.buySkillShape("blackhole", "detonate");
+    we.localIndex = prev;
+    // 房主投的区（ownerIdx=0，房主没买）
+    we.zones.push({ id: 1, owner: "player", ownerIdx: 0, pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+    we.lasers.push({
+      pos: { x: 520, y: 150 }, vel: { x: 0, y: 0 }, angle: 0, damage: 10, pierce: 0,
+      hitIds: [], life: 1, travel: 0, blast: 0, radius: 9, orb: true, tag: "flight",
+      ownerIdx: 1, lift: 0, detonated: false, splitCount: 0, small: false, homing: false, targetZone: 0,
+    });
+    we.updateLasers(1 / 60);
+    check(
+      "斥爆：没买的人投的范围区不能被引爆",
+      !we.events.some((e: any) => e.type === "detonate"),
+    );
+  }
+
   // 引力超标
   const w4 = makeWorld();
   w4.player.coins = 500;

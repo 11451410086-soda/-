@@ -437,10 +437,10 @@ export class World {
       const d = Math.hypot(dx, dy) || 1;
       this.applyCC(e, 'knockback', { x: dx / d, y: dy / d }, knock, cfg.knockTime, false);
     }
-    // 斥爆：近战击命中引力范围也会引爆
-    if (this.hasSkillShape('blackhole', 'detonate') && this.detonateCd <= 0) {
+    // 斥爆：近战击命中引力范围也会引爆（看范围区主人有没有买斥爆）
+    if (this.detonateCd <= 0) {
       const z = this.blackholeZone();
-      if (z) {
+      if (z && this.hasSkillShape('blackhole', 'detonate', this.zoneOwner(z))) {
         const d = dist(p.pos, z.pos);
         const inAngle = Math.abs(angleDiff(angleTo(p.pos, z.pos), p.shieldAngle)) <= half + 0.35;
         if (d <= range + z.radius && inAngle) {
@@ -771,12 +771,21 @@ export class World {
   }
 
   /** 斥爆：武器飞行物进入引力范围时引爆 */
+  /** 范围区的主人（没有归属信息时退回本地玩家） */
+  zoneOwner(z: Zone): Player {
+    return z.ownerIdx !== undefined ? this.players[z.ownerIdx] : this.player;
+  }
+
+  /**
+   * 斥爆挂在「范围区主人」身上：谁买了斥爆，他投的引力范围就变成可引爆的，
+   * 之后任何人的飞行物 / 近战击都能触发（不是看攻击者有没有买）。
+   */
   checkDetonate(l: Laser): boolean {
     if (this.detonateCd > 0) return false;
-    if (!this.hasSkillShape('blackhole', 'detonate')) return false;
     if (l.tag !== 'flight') return false;
     const z = this.blackholeZone();
     if (!z) return false;
+    if (!this.hasSkillShape('blackhole', 'detonate', this.zoneOwner(z))) return false;
     if (dist(l.pos, z.pos) > z.radius) return false;
     // 从引力范围中心向外扩散
     this.explodeAt(z.pos.x, z.pos.y, BLACKHOLE_SHAPE.blastRadius, BLACKHOLE_SHAPE.blastDamage);
@@ -881,10 +890,10 @@ export class World {
     p.leapHangT = 0;
     p.leapT = 0;
     p.landT = 0.18;
-    // 斥爆：近战击（陨落落地）命中引力范围也会引爆
-    if (this.hasSkillShape('blackhole', 'detonate') && this.detonateCd <= 0) {
+    // 斥爆：近战击（陨落落地）命中引力范围也会引爆（看范围区主人有没有买斥爆）
+    if (this.detonateCd <= 0) {
       const z = this.blackholeZone();
-      if (z && dist(p.pos, z.pos) <= radius + z.radius) {
+      if (z && this.hasSkillShape('blackhole', 'detonate', this.zoneOwner(z)) && dist(p.pos, z.pos) <= radius + z.radius) {
         this.explodeAt(z.pos.x, z.pos.y, BLACKHOLE_SHAPE.blastRadius, BLACKHOLE_SHAPE.blastDamage);
         this.events.push({ type: 'detonate', x: z.pos.x, y: z.pos.y });
         this.detonateCd = BLACKHOLE_SHAPE.blastCd;

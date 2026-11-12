@@ -421,7 +421,7 @@ export const SKILL_SHAPES: Record<string, SkillShapeDef[]> = {
     {
       id: "detonate",
       name: "斥爆",
-      desc: "引力范围持续期间，武器飞行物或武器近战击命中范围会引发一次爆炸（技能近战击）。",
+      desc: "买了斥爆后，自己投出的引力范围变成可引爆：持续期间任何玩家的武器飞行物或武器近战击命中该范围，都会引发一次爆炸（技能近战击）。",
       cost: 90,
     },
     {
