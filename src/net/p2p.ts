@@ -107,6 +107,11 @@ export class P2P {
   private relayTimer: number | null = null;
   /** 中继模式下快照降到 30Hz，省带宽 */
   private relayStateSkip = false;
+  /** 「我走中继」的广播定时器与次数 */
+  private relayAnnounceTimer: number | null = null;
+  private relayAnnounceCount = 0;
+  /** 是否已收到对方的中继报文（握手完成） */
+  private peerRelaySeen = false;
 
   constructor(opts: P2POptions) {
     this.opts = opts;
@@ -171,13 +176,44 @@ export class P2P {
   }
 
   private switchToRelay(notify: boolean): void {
-    if (this.closed || this.relayMode) return;
-    this.relayMode = true;
-    this.log('直连未通，切换到服务端中继');
-    if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
-    this.relayTimer = null;
-    if (notify) this.sendRelay({ kind: 'mode' });
+    if (this.closed) return;
+    if (!this.relayMode) {
+      this.relayMode = true;
+      this.log('直连未通，切换到服务端中继');
+      if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
+      this.relayTimer = null;
+    }
+    // 中继模式下收到对方的任何中继报文，就说明握手完成，不用再广播了
+    if (notify) this.startRelayAnnounce();
     this.becomeConnected();
+  }
+
+  /**
+   * 反复广播「我走中继」，直到收到对方的任何中继报文。
+   * 只发一次的话，如果对方那时还没进信令房间，就会一条直连一条中继、数据单向丢失。
+   */
+  private startRelayAnnounce(): void {
+    if (this.relayAnnounceTimer !== null) return;
+    const tick = () => {
+      if (this.closed || this.peerRelaySeen) {
+        this.stopRelayAnnounce();
+        return;
+      }
+      this.sendRelay({ kind: 'mode' });
+      this.relayAnnounceCount++;
+      if (this.relayAnnounceCount > 40) {
+        this.stopRelayAnnounce();
+        return;
+      }
+      this.relayAnnounceTimer = window.setTimeout(tick, 400);
+    };
+    this.relayAnnounceCount = 0;
+    this.relayAnnounceTimer = window.setTimeout(tick, 0);
+  }
+
+  private stopRelayAnnounce(): void {
+    if (this.relayAnnounceTimer !== null) window.clearTimeout(this.relayAnnounceTimer);
+    this.relayAnnounceTimer = null;
   }
 
   private becomeConnected(): void {
@@ -236,6 +272,7 @@ export class P2P {
     if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
     if (this.wsRetry !== null) window.clearTimeout(this.wsRetry);
     if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
+    this.stopRelayAnnounce();
     this.joinTimer = null;
     this.connectTimer = null;
     this.wsRetry = null;
@@ -287,11 +324,13 @@ export class P2P {
     if (msg.t === 'p2p-ice') {
       const cand = msg.cand as RelayEnvelope & RTCIceCandidateInit;
       if ((cand as RelayEnvelope).relay === 1) {
-        // 中继信封
+        // 收到对方的中继报文：握手完成，停掉广播；如果自己还在直连就一起切过来
+        this.peerRelaySeen = true;
+        this.stopRelayAnnounce();
         if (cand.kind === 'mode') {
           this.switchToRelay(false);
         } else {
-          this.becomeConnected();
+          this.switchToRelay(false);
           this.opts.onData(JSON.stringify(cand.data));
         }
         return;
@@ -301,7 +340,13 @@ export class P2P {
   }
 
   private hostOffer(): void {
-    if (this.connected || this.closed) return;
+    if (this.closed) return;
+    // 已经在中继模式：别再发 offer（否则对方会建直连，两边通道不一致）
+    if (this.relayMode) {
+      this.startRelayAnnounce();
+      return;
+    }
+    if (this.connected) return;
     const now = Date.now();
     if (now - this.lastOfferAt < OFFER_COOLDOWN_MS) return;
     this.lastOfferAt = now;
@@ -323,7 +368,9 @@ export class P2P {
   }
 
   private async guestAnswer(sdp: string): Promise<void> {
-    if (this.connected || this.closed) return;
+    // 已经走中继就不要再建直连通道
+    if (this.closed || this.relayMode) return;
+    if (this.connected) return;
     this.lastOfferAt = Date.now();
     const pc = this.resetPeer();
     try {
