@@ -167,10 +167,60 @@ export const ABILITY_IDENTITIES: AbilityIdentity[] = [
   { key: 'qulinHeal', name: '祛鳞·治疗', attrs: [{ attr: 'buff', scope: 'enemy' }] },
 ];
 
-/** 校验：ABILITY_IDENTITIES 里的属性身份必须存在且是 attr 组 */
+/**
+ * 塑造（支线升级）挂的属性身份。
+ * attrs 为空 = 纯数值改造（只动数值身份，不产生新的属性身份）。
+ */
+export const SHAPE_IDENTITIES: AbilityIdentity[] = [
+  // 陨盾
+  { key: 'ground', name: '底盾', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  { key: 'safety', name: '安全感', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  { key: 'unyield', name: '坚不可摧', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  // 电磁炮
+  { key: 'charge', name: '极蓄', attrs: [] },
+  { key: 'chain', name: '电传播', attrs: [{ attr: 'meleeHit', scope: 'ally' }] },
+  { key: 'split', name: '动力分裂', attrs: [{ attr: 'flight', scope: 'ally' }] },
+  { key: 'pierce', name: '磁透性', attrs: [] },
+  // 黑洞雷
+  { key: 'detonate', name: '斥爆', attrs: [{ attr: 'meleeHit', scope: 'ally' }] },
+  {
+    key: 'whiteout',
+    name: '白扩',
+    attrs: [
+      { attr: 'meleeHit', scope: 'ally' },
+      { attr: 'bodyControl', scope: 'ally' },
+    ],
+  },
+  { key: 'overflow', name: '引力超标', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  { key: 'slowfield', name: '噬速力', attrs: [{ attr: 'debuff', scope: 'ally' }] },
+  // 陨落
+  { key: 'deepen', name: '状况加深', attrs: [] },
+  { key: 'recoil', name: '后坐力', attrs: [] },
+  { key: 'sticky', name: '土壤黏脚', attrs: [{ attr: 'debuff', scope: 'ally' }] },
+  // 磐石护体
+  {
+    key: 'eggshell',
+    name: '石卵',
+    attrs: [
+      { attr: 'bodyControl', scope: 'ally' },
+      { attr: 'buff', scope: 'ally' },
+    ],
+  },
+  {
+    key: 'impact',
+    name: '磐石冲击',
+    attrs: [
+      { attr: 'meleeHit', scope: 'ally' },
+      { attr: 'bodyControl', scope: 'ally' },
+    ],
+  },
+  { key: 'siphon', name: '磐能吸取', attrs: [{ attr: 'buff', scope: 'ally' }] },
+];
+
+/** 校验：ABILITY_IDENTITIES / SHAPE_IDENTITIES 里的属性身份必须存在且是 attr 组 */
 export function validateAbilityIdentities(): string[] {
   const bad: string[] = [];
-  for (const ab of ABILITY_IDENTITIES) {
+  for (const ab of [...ABILITY_IDENTITIES, ...SHAPE_IDENTITIES]) {
     for (const a of ab.attrs) {
       const def = IDENTITIES[a.attr];
       if (!def || def.group !== 'attr') bad.push(ab.name + ' → ' + a.attr);

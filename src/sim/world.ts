@@ -1079,9 +1079,16 @@ export class World {
       if (e.rootT > 0) {
         e.rootT = Math.max(0, e.rootT - dt);
         if (e.rootT <= 0 && this.hasSkillShape('leap', 'sticky')) {
-          // 黏脚是减速（生理控制），同样吃生理抗性
-          e.slowT = LEAP_SHAPE.stickyTime * e.rootBonus * (1 - this.ccResist(e));
-          e.slowFactor = Math.min(0.85, LEAP_SHAPE.stickySlow * e.rootBonus);
+          // 黏脚是「减益效果」不是生理控制：吃减益抗性（强度与时长各按抗性缩）
+          const sticky = this.applyDebuff(
+            e,
+            LEAP_SHAPE.stickySlow * e.rootBonus,
+            LEAP_SHAPE.stickyTime * e.rootBonus,
+          );
+          if (sticky.time > 0.0001) {
+            e.slowFactor = Math.min(0.85, sticky.power);
+            e.slowT = sticky.time;
+          }
         }
       }
       if (e.slowT > 0) e.slowT = Math.max(0, e.slowT - dt);
