@@ -362,7 +362,9 @@ export class P2P {
       return;
     }
     if (msg.room !== this.opts.room) return;
-    this.log('收到', msg.t);
+    // 中继数据包每帧都有，不打印（会把有用日志冲掉）
+    const isRelayEnv = msg.t === 'p2p-ice' && (msg.cand as unknown as { relay?: number }).relay === 1;
+    if (!isRelayEnv) this.log('收到', msg.t);
     if (msg.t === 'p2p-join') {
       if (this.opts.role === 'host') this.hostOffer();
       return;

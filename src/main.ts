@@ -562,9 +562,16 @@ let lastGuestSeq = 0;
 let appliedGuestSeq = 0;
 /** 客人：自己发出的输入序号 + 未确认输入缓冲（用于重放预测） */
 let guestSeqOut = 0;
+const AUTOWALK = typeof location !== 'undefined' && /[?&]autowalk=1/.test(location.search);
 let ackedGuestSeq = 0;
 /** debug：每秒有多少次纠偏超过 4px */
 let corrLog = 0;
+let corrDbgAt = 0;
+let lastErr = 0;
+/** 房主模拟时间相对真实时间的速率（房主卡顿时 <1）；客人的预测和发帧都按它走 */
+let hostSimRate = 1;
+let hostTimePrev = 0;
+let hostTimePrevAt = 0;
 const guestInputBuf: { seq: number; moveX: number; moveY: number }[] = [];
 
 /* ---------------- 联机状态 ---------------- */
@@ -1004,6 +1011,8 @@ function advanceCoop(): void {
   if (lobbyStartAt === null) {
     lobbyStartAt = now + 900;
     renderCoopLobby();
+    // 房主切后台时靠隐藏循环推进倒计时，否则双方就绪后会一直卡在「即将开始」
+    if (document.hidden) hiddenLoopStart();
   } else if (now >= lobbyStartAt) {
     startCoopGame();
   }
@@ -1180,7 +1189,7 @@ function hostCoopTick(dt: number): void {
   if (!world || world.state !== 'playing' || paused) return;
   acc += dt;
   let guard = 0;
-  while (acc >= STEP && guard < 5) {
+  while (acc >= STEP && guard < 8) {
     // 输入必须在循环里取：高刷新率下有些帧不推进逻辑，在外面取会把按键边沿吃掉
     const inp = BOT ? buildBotInput(world, false) : buildInput(true);
     const guestInp = p2pInput ?? EMPTY_INPUT;
@@ -1197,6 +1206,7 @@ function hostCoopTick(dt: number): void {
     acc -= STEP;
     guard++;
   }
+  if (acc > STEP * 8) acc = STEP * 8;
   // 这一帧产生的特效事件先留一份给客人（渲染时会清空 world.events）
   if (world.events.length > 0) {
     for (const ev of world.events) p2pEvents.push(ev);
@@ -1368,6 +1378,16 @@ function frame(now: number): void {
         // 重放预测：用「房主权威位置 + 还没被处理的输入」算出目标位置。
         // 注意不能直接钉过去——重放只要有一两像素误差，硬设就会在 30Hz 上回跳，
         // 手感比不修还糟。这里只把目标当作纠偏方向，限速平滑跟过去。
+        // 用快照里的世界时间估计房主的模拟速率：房主卡顿时它的模拟时间会走得比真实时间慢
+        const wt = (p2pSnap as { time?: number }).time ?? 0;
+        const nowRate = performance.now();
+        if (hostTimePrev > 0 && wt > hostTimePrev && nowRate > hostTimePrevAt) {
+          const r = (wt - hostTimePrev) / ((nowRate - hostTimePrevAt) / 1000);
+          const clamped = r < 0.4 ? 0.4 : r > 1.6 ? 1.6 : r;
+          hostSimRate += (clamped - hostSimRate) * 0.2;
+        }
+        hostTimePrev = wt;
+        hostTimePrevAt = nowRate;
         const seqAck = (p2pSnap as { guestSeq?: number }).guestSeq ?? 0;
         if (seqAck > ackedGuestSeq) ackedGuestSeq = seqAck;
         const aw = p2pSnap.players[world.localIndex];
@@ -1400,7 +1420,16 @@ function frame(now: number): void {
             me0.pos.x += (ex / d) * step;
             me0.pos.y += (ey / d) * step;
           }
-          if (DEBUG && d > 4) corrLog++;
+          if (DEBUG) {
+            if (d > 4) corrLog++;
+            lastErr = d;
+            const nowD = performance.now();
+            if (nowD - corrDbgAt > 1000) {
+              corrDbgAt = nowD;
+              console.log('[net] 纠偏 err=' + d.toFixed(1) + 'px pending=' + guestInputBuf.length + ' head=' + (guestInputBuf[0]?.seq ?? -1) + ' tail=' + (guestInputBuf[guestInputBuf.length - 1]?.seq ?? -1) + ' replay=' + replay + ' acked=' + ackedGuestSeq + ' out=' + guestSeqOut);
+              corrLog = 0;
+            }
+          }
           while (guestInputBuf.length > 0 && guestInputBuf[0].seq <= ackedGuestSeq) {
             guestInputBuf.shift();
           }
@@ -1458,7 +1487,14 @@ function frame(now: number): void {
         me.rollT = ROLL.duration;
         me.stamina -= ROLL.cost;
       }
-      if (me.alive && !me.panelOpen) world.predictPlayerMove(me, inp, dt);
+      if (AUTOWALK) {
+        const tt = performance.now() / 700;
+        inp.moveX = Math.sin(tt);
+        inp.moveY = Math.cos(tt * 0.7);
+      }
+      // 本地预测按房主的模拟速率缩放：房主慢，客人也慢，否则会一路跑到前面被拽回来
+      const pdt = dt * hostSimRate;
+      if (me.alive && !me.panelOpen) world.predictPlayerMove(me, inp, pdt);
       if (me.alive) {
         // 技能投掷预览的落点同样本地推，别等快照
         if (me.mode === 'throw' || me.mode === 'leapaim') {
