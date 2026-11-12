@@ -233,7 +233,14 @@ export class P2P {
     if (this.wsRetry !== null) return;
     this.wsRetry = window.setTimeout(() => {
       this.wsRetry = null;
-      if (!this.closed && (!this.connected || this.relayMode)) this.connectSignal();
+      if (this.closed) return;
+      this.wsRetryCount++;
+      // 中继模式下信令就是数据通道，连续重连不上就别静默卡死
+      if (this.relayMode && this.wsRetryCount > 10) {
+        this.fail('中继连接断开，请重新进入房间');
+        return;
+      }
+      if (!this.connected || this.relayMode) this.connectSignal();
     }, 2500);
   }
 
