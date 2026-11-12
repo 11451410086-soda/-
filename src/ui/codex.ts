@@ -307,11 +307,11 @@ function identityEntries(): Entry[] {
     (d) => d.group === 'num' && (d.attrs ?? []).length === 0,
   );
   const ownerCards: Array<{ owner: 'weapon' | 'skill' | 'character'; name: string; desc: string }> = [
-    { owner: 'weapon', name: '武器数值身份', desc: '武器专用：装填与容量。' },
-    { owner: 'skill', name: '技能数值身份', desc: '技能专用：冷却相关。' },
+    { owner: 'weapon', name: '通用数值身份 · 武器', desc: '武器专用：装填与容量。' },
+    { owner: 'skill', name: '通用数值身份 · 技能', desc: '技能专用：冷却相关。' },
     {
       owner: 'character',
-      name: '角色数值身份',
+      name: '通用数值身份 · 角色',
       desc: '域卫与域兽共用：生命、移动、承受与体力。',
     },
   ];
