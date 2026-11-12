@@ -563,6 +563,8 @@ let appliedGuestSeq = 0;
 /** 客人：自己发出的输入序号 + 未确认输入缓冲（用于重放预测） */
 let guestSeqOut = 0;
 let ackedGuestSeq = 0;
+/** debug：每秒有多少次纠偏超过 4px */
+let corrLog = 0;
 const guestInputBuf: { seq: number; moveX: number; moveY: number }[] = [];
 
 /* ---------------- 联机状态 ---------------- */
@@ -1363,13 +1365,16 @@ function frame(now: number): void {
         applySnapshot(world, p2pSnap);
         snapAt = tAp;
         tApply += performance.now() - tAp;
-        // 重放预测：把自己钉在房主的权威位置上，再把「房主还没处理到的输入」重放一遍。
-        // 这样既没有延迟，也不会被纠偏拽回去（以前是追一个落后的目标，手感像被牵住）。
+        // 重放预测：用「房主权威位置 + 还没被处理的输入」算出目标位置。
+        // 注意不能直接钉过去——重放只要有一两像素误差，硬设就会在 30Hz 上回跳，
+        // 手感比不修还糟。这里只把目标当作纠偏方向，限速平滑跟过去。
         const seqAck = (p2pSnap as { guestSeq?: number }).guestSeq ?? 0;
         if (seqAck > ackedGuestSeq) ackedGuestSeq = seqAck;
         const aw = p2pSnap.players[world.localIndex];
         const me0 = world.player;
         if (aw && me0.alive) {
+          const sx = me0.pos.x;
+          const sy = me0.pos.y;
           me0.pos.x = aw.x;
           me0.pos.y = aw.y;
           let replay = 0;
@@ -1378,6 +1383,24 @@ function frame(now: number): void {
             if (replay++ > 30) break;
             world.predictPlayerMove(me0, { moveX: b.moveX, moveY: b.moveY } as InputSnapshot, 1 / 60);
           }
+          const tX = me0.pos.x;
+          const tY = me0.pos.y;
+          me0.pos.x = sx;
+          me0.pos.y = sy;
+          const ex = tX - sx;
+          const ey = tY - sy;
+          const d = Math.hypot(ex, ey);
+          if (d > 150) {
+            // 真的错位（复活/传送/被拒的动作）才硬对齐
+            me0.pos.x = tX;
+            me0.pos.y = tY;
+          } else if (d > 2) {
+            // 每秒最多追 220px：跟得上，但不会像被拽
+            const step = Math.min(d, 220 / 60);
+            me0.pos.x += (ex / d) * step;
+            me0.pos.y += (ey / d) * step;
+          }
+          if (DEBUG && d > 4) corrLog++;
           while (guestInputBuf.length > 0 && guestInputBuf[0].seq <= ackedGuestSeq) {
             guestInputBuf.shift();
           }

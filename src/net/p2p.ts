@@ -80,6 +80,16 @@ const ICE_SERVERS: RTCIceServer[] = [
       ]),
 ];
 
+/** 调试：?lag=毫秒 模拟网络延迟，用来复现远距离联机手感 */
+const LAG_MS = (() => {
+  try {
+    const m = /[?&]lag=(\d+)/.exec(location.search);
+    return m ? Math.min(800, Number(m[1])) : 0;
+  } catch {
+    return 0;
+  }
+})();
+
 const JOIN_RETRY_MS = 1200;
 /** 同一房间重复 join 时，offer 的最小间隔（避免双方互相打断） */
 const OFFER_COOLDOWN_MS = 4000;
@@ -302,6 +312,14 @@ export class P2P {
 
   /** 把 P2P 报文包成中继信封，借 p2p-ice 让信令服务器转发 */
   private sendRelay(env: Partial<RelayEnvelope> & { kind: 'mode' | 'data' | 'bye' }): void {
+    if (LAG_MS > 0) {
+      window.setTimeout(() => this.sendRelayRaw(env), LAG_MS);
+      return;
+    }
+    this.sendRelayRaw(env);
+  }
+
+  private sendRelayRaw(env: Partial<RelayEnvelope> & { kind: 'mode' | 'data' | 'bye' }): void {
     this.sendSignal({
       t: 'p2p-ice',
       room: this.opts.room,
@@ -570,6 +588,15 @@ export class P2P {
   }
 
   private sendOn(dc: RTCDataChannel | null, payload: unknown): void {
+    if (!dc || dc.readyState !== 'open') return;
+    if (LAG_MS > 0) {
+      window.setTimeout(() => this.sendOnRaw(dc, payload), LAG_MS);
+      return;
+    }
+    this.sendOnRaw(dc, payload);
+  }
+
+  private sendOnRaw(dc: RTCDataChannel | null, payload: unknown): void {
     if (!dc || dc.readyState !== 'open') return;
     try {
       dc.send(JSON.stringify(payload));
