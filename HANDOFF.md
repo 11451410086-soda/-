@@ -119,7 +119,9 @@
   - 客户端连不上时自动发 HTTP 请求唤醒实例（`warmUpServer`）。
   - 页面开着时每 4 分钟 ping 一次（`pingSignal`），整个开黑期间不会休眠。
   - 状态栏提示带重试次数，并说明「服务器可能在休眠，最多约 1 分钟」。
-- **彻底方案**：`worker/` 目录是 Cloudflare Worker + Durable Object 版（协议完全一致、不会休眠）。
+- **Cloudflare Worker 备选**：`worker/` 目录是 Worker + Durable Object 版（协议一致、不会休眠），已实测部署成功，
+  但 **`*.workers.dev` 在国内被墙**（同机 cloudflare.com 通、workers.dev 不通），所以线上未启用；
+  除非绑定自定义域名，否则不要切。
   - 部署：`cd worker && npx wrangler login && npx wrangler deploy`
   - 切换：改 `.github/workflows/pages.yml` 里的 `VITE_SIGNAL_URL`，或临时用 `?signal=wss://xxx.workers.dev` 验证。
 - 客户端信令地址优先级：`?signal=` > 构建注入 `VITE_SIGNAL_URL` > 同源（本地开发连 3001）。
