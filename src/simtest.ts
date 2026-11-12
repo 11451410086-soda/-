@@ -3,7 +3,7 @@
  * 打开 http://127.0.0.1:5173/test.html 看结果。
  */
 import { COIN_PER_KILL, RAIL_WEAPON } from './content/defs';
-import { IDENTITIES, validateIdentities } from './content/identities';
+import { IDENTITIES, validateAbilityIdentities, validateIdentities } from './content/identities';
 import { World } from './sim/world';
 
 const logEl = document.getElementById('log') as HTMLElement;
@@ -178,32 +178,38 @@ const input = {
   w.fireRail();
   check("身份：武器弹体是「飞行物」", w.lasers[0].tag === "flight");
 
-  e.immunity = {};
+  e.resist = {};
   check(
-    "免控：无免疫时控制生效",
+    "抗性：无抗性时控制生效",
     w.applyCC(e, "knockback", { x: 1, y: 0 }, 100, 0.2, false) === true,
   );
 
   e.ext = null;
-  e.immunity = { body: true };
+  e.resist = { body: 0.5 };
+  const halfOk = w.applyCC(e, "knockback", { x: 1, y: 0 }, 100, 0.2, false);
+  const halfT = (e as unknown as { ext?: { t: number } | null }).ext?.t ?? 0;
+  check("抗性：50% 生理抗性 → 控制时长减半", halfOk === true && Math.abs(halfT - 0.1) < 1e-6);
+
+  e.ext = null;
+  e.resist = { body: 1 };
   check(
-    "免控：生理免控 → 生理控制无效",
+    "抗性：100% 生理抗性 → 绝对免疫",
     w.applyCC(e, "knockback", { x: 1, y: 0 }, 100, 0.2, false) === false,
   );
 
   e.ext = null;
-  e.immunity = { mind: true };
+  e.resist = { mind: 1 };
   check(
-    "免控：心理免控不影响生理控制",
+    "抗性：心理抗性不影响生理控制",
     w.applyCC(e, "root", { x: 1, y: 0 }, 0, 0.5, false) === true,
   );
 
-  e.ext = null;
-  e.immunity = { all: true };
-  check(
-    "免控：全免控",
-    w.applyCC(e, "knockback", { x: 1, y: 0 }, 100, 0.2, false) === false,
-  );
+  e.resist = {};
+  const debuffed = w.applyDebuff(e, 100, 2);
+  check("抗性：无减益抗性时减益不缩水", debuffed.power === 100 && debuffed.time === 2);
+  e.resist = { debuff: 0.5 };
+  const half = w.applyDebuff(e, 100, 2);
+  check("抗性：50% 减益抗性 → 减益加成与时长各减半", half.power === 50 && half.time === 1);
 }
 
 /* ============ 10. 翻滚 ============ */
@@ -371,6 +377,9 @@ const input = {
   check("身份表：名字与设计一致", attrs.every((a) => a.name.length > 0));
   const missing = validateIdentities();
   check("身份表：每个属性身份都有对应数值身份", missing.length === 0);
+
+  const badAttrs = validateAbilityIdentities();
+  check("身份表：事物引用的属性身份都存在", badAttrs.length === 0);
 }
 
 /* ============ 结果 ============ */

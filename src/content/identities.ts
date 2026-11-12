@@ -18,6 +18,8 @@ export interface IdentityDef {
   group: IdentityGroup;
   /** 归属的属性身份 */
   attrs?: string[];
+  /** 属性身份才有阵营：友方 / 敌方 */
+  scoped?: boolean;
 }
 
 export const IDENTITIES: Record<string, IdentityDef> = {
@@ -26,13 +28,13 @@ export const IDENTITIES: Record<string, IdentityDef> = {
   ranged: { key: 'ranged', name: '远程', group: 'cat' },
 
   /* ---------------- 属性身份 ---------------- */
-  flight: { key: 'flight', name: '飞行物', group: 'attr' },
-  meleeHit: { key: 'meleeHit', name: '近战击', group: 'attr' },
-  zone: { key: 'zone', name: '范围区', group: 'attr' },
-  mindControl: { key: 'mindControl', name: '心理控制', group: 'attr' },
-  bodyControl: { key: 'bodyControl', name: '生理控制', group: 'attr' },
-  buff: { key: 'buff', name: '增益效果', group: 'attr' },
-  debuff: { key: 'debuff', name: '减益效果', group: 'attr' },
+  flight: { key: 'flight', name: '飞行物', group: 'attr', scoped: true },
+  meleeHit: { key: 'meleeHit', name: '近战击', group: 'attr', scoped: true },
+  zone: { key: 'zone', name: '范围区', group: 'attr', scoped: true },
+  mindControl: { key: 'mindControl', name: '心理控制', group: 'attr', scoped: true },
+  bodyControl: { key: 'bodyControl', name: '生理控制', group: 'attr', scoped: true },
+  buff: { key: 'buff', name: '增益效果', group: 'attr', scoped: true },
+  debuff: { key: 'debuff', name: '减益效果', group: 'attr', scoped: true },
 
   /* ---------------- 数值身份：伤害 ---------------- */
   flightDamage: { key: 'flightDamage', name: '飞行物伤害', group: 'num', attrs: ['flight'] },
@@ -76,14 +78,28 @@ export const IDENTITIES: Record<string, IdentityDef> = {
   shield: { key: 'shield', name: '护盾值', group: 'num' },
 };
 
-/** 免控身份：按控制类型划分 */
-export const IMMUNITIES = {
-  mind: '心理免控',
-  body: '生理免控',
-} as const;
+/** 阵营：属性身份才有（数值身份不带阵营） */
+export type Scope = 'ally' | 'enemy';
+
+/** 抗性身份：百分比 0~1，100% 即绝对免疫 */
+export const RESISTANCES: Record<
+  'mind' | 'body' | 'debuff',
+  { key: ResistanceKey; name: string; desc: string }
+> = {
+  mind: { key: 'mind', name: '心理抗性', desc: '心理控制时长 ×(1−r)' },
+  body: { key: 'body', name: '生理抗性', desc: '生理控制时长 ×(1−r)（牵引/击退/减速/陷地/眩晕）' },
+  debuff: { key: 'debuff', name: '减益抗性', desc: '减益加成与减益时间 ×(1−r)' },
+};
+
+export type ResistanceKey = 'mind' | 'body' | 'debuff';
 
 export function idName(key: string): string {
   return IDENTITIES[key]?.name ?? key;
+}
+
+/** 带阵营的属性身份名：友方范围区 / 敌方飞行物 */
+export function attrName(key: string, scope: Scope): string {
+  return (scope === 'ally' ? '友方' : '敌方') + idName(key);
 }
 
 /** 某一属性身份下挂的数值身份 */
@@ -97,4 +113,68 @@ export function numsOf(attrKey: string): IdentityDef[] {
 export function validateIdentities(): string[] {
   const attrs = Object.values(IDENTITIES).filter((d) => d.group === 'attr');
   return attrs.filter((a) => numsOf(a.key).length === 0).map((a) => a.name);
+}
+
+/* ---------------- 当前所有事物挂的属性身份 ---------------- */
+
+export interface AbilityIdentity {
+  key: string;
+  name: string;
+  /** 属性身份 + 阵营（范围区/飞行物等可以同时挂多个） */
+  attrs: Array<{ attr: string; scope: Scope }>;
+}
+
+/**
+ * 归属规则：身份记「效果属于哪一方」，不记「对谁有利」。
+ * - 玩家投出的黑洞雷 → 友方范围区（作用对象是敌方，但归属仍是友方）
+ * - 祛鳞治疗（治疗域兽）→ 敌方增益效果
+ * - 陨盾抵挡（使自身受伤减少）→ 友方增益效果
+ */
+export const ABILITY_IDENTITIES: AbilityIdentity[] = [
+  { key: 'railgun', name: '电磁炮·弹体', attrs: [{ attr: 'flight', scope: 'ally' }] },
+  { key: 'shieldStrike', name: '陨盾·盾击', attrs: [{ attr: 'meleeHit', scope: 'ally' }] },
+  { key: 'shieldGuard', name: '陨盾·抵挡', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  { key: 'shieldMeteor', name: '陨星·减伤', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  { key: 'blackholeThrow', name: '黑洞雷·投掷物', attrs: [{ attr: 'flight', scope: 'ally' }] },
+  {
+    key: 'blackholeZone',
+    name: '黑洞雷·范围区',
+    attrs: [
+      { attr: 'zone', scope: 'ally' },
+      { attr: 'bodyControl', scope: 'ally' },
+    ],
+  },
+  {
+    key: 'leap',
+    name: '陨落',
+    attrs: [
+      { attr: 'meleeHit', scope: 'ally' },
+      { attr: 'bodyControl', scope: 'ally' },
+    ],
+  },
+  {
+    key: 'stone',
+    name: '磐石护体',
+    attrs: [
+      { attr: 'buff', scope: 'ally' },
+      { attr: 'debuff', scope: 'ally' },
+    ],
+  },
+  { key: 'puzeFan', name: '普则·扇形劈击', attrs: [{ attr: 'meleeHit', scope: 'enemy' }] },
+  { key: 'yuejiBottle', name: '越机·毒雾瓶', attrs: [{ attr: 'flight', scope: 'enemy' }] },
+  { key: 'yuejiZone', name: '越机·毒雾', attrs: [{ attr: 'zone', scope: 'enemy' }] },
+  { key: 'shiqiaShot', name: '失恰·远程弹', attrs: [{ attr: 'flight', scope: 'enemy' }] },
+  { key: 'qulinHeal', name: '祛鳞·治疗', attrs: [{ attr: 'buff', scope: 'enemy' }] },
+];
+
+/** 校验：ABILITY_IDENTITIES 里的属性身份必须存在且是 attr 组 */
+export function validateAbilityIdentities(): string[] {
+  const bad: string[] = [];
+  for (const ab of ABILITY_IDENTITIES) {
+    for (const a of ab.attrs) {
+      const def = IDENTITIES[a.attr];
+      if (!def || def.group !== 'attr') bad.push(ab.name + ' → ' + a.attr);
+    }
+  }
+  return bad;
 }

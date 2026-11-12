@@ -1,5 +1,5 @@
 import type { EnemyKind } from '../content/defs';
-import type { Immunity, Tag } from '../shared/types';
+import type { Resistance, Tag } from '../shared/types';
 import type { Vec } from '../shared/util';
 
 export interface Player {
@@ -113,7 +113,7 @@ export interface Enemy {
   atkTimer: number;
   atkRange: number;
   aggro: number;
-  immunity: Immunity;
+  resist: Resistance;
   ranged: boolean;
   keepDist: number;
   shotCd: number;

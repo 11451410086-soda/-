@@ -1,4 +1,4 @@
-import type { Immunity } from '../shared/types';
+import type { Resistance } from '../shared/types';
 import type { Vec } from '../shared/util';
 
 export const VIEW = { w: 480, h: 270 };
@@ -55,7 +55,7 @@ export interface EnemyDef {
   atkInterval: number;
   atkRange: number;
   aggro: number;
-  immunity: Immunity;
+  resist: Resistance;
   ranged: boolean;
   keepDist: number;
   shotSpeed: number;
@@ -83,7 +83,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     atkInterval: 2.0,
     atkRange: 86,
     aggro: 168,
-    immunity: {},
+    resist: {},
     ranged: false,
     keepDist: 0,
     shotSpeed: 0,
@@ -99,7 +99,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     atkInterval: 2.6,
     atkRange: 175,
     aggro: 235,
-    immunity: {},
+    resist: {},
     ranged: true,
     keepDist: 150,
     shotSpeed: 0,
@@ -121,7 +121,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     atkInterval: 999,
     atkRange: 0,
     aggro: 200,
-    immunity: {},
+    resist: {},
     ranged: false,
     keepDist: 0,
     shotSpeed: 0,
@@ -137,7 +137,7 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
     atkInterval: 2.2,
     atkRange: 150,
     aggro: 240,
-    immunity: {},
+    resist: {},
     ranged: true,
     keepDist: 118,
     shotSpeed: 220,

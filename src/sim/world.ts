@@ -881,7 +881,9 @@ export class World {
     for (const e of this.enemies) {
       if (e.hp <= 0) continue;
       if (dist(e.pos, p.pos) > radius + e.radius) continue;
-      e.rootT = Math.max(e.rootT, LEAP.root * (1 + bonus * 0.8));
+      // 陷地也是生理控制，按生理抗性缩时长
+      const leapRoot = LEAP.root * (1 + bonus * 0.8) * (1 - this.ccResist(e));
+      if (leapRoot > 0.0001) e.rootT = Math.max(e.rootT, leapRoot);
       e.rootBonus = 1 + bonus;
     }
     p.leapHung = 0;
@@ -1033,6 +1035,17 @@ export class World {
     p.ammo = p.magSize;
   }
 
+  /** 生理抗性：目前所有控制都归生理（心理控制还没有来源）。1 = 绝对免疫。 */
+  ccResist(e: Enemy): number {
+    return Math.max(0, Math.min(1, e.resist.body ?? 0));
+  }
+
+  /** 减益抗性：减益强度与时长同时按抗性缩放（还没有域兽上减益，先备好接口） */
+  applyDebuff(e: Enemy, power: number, time: number): { power: number; time: number } {
+    const r = Math.max(0, Math.min(1, e.resist.debuff ?? 0));
+    return { power: power * (1 - r), time: time * (1 - r) };
+  }
+
   applyCC(
     e: Enemy,
     kind: CCKind,
@@ -1041,11 +1054,13 @@ export class World {
     duration: number,
     interrupt = true,
   ): boolean {
-    if (e.immunity.all || e.immunity.body) {
+    const dur = duration * (1 - this.ccResist(e));
+    if (dur <= 0.0001) {
       this.events.push({ type: 'immune', x: e.pos.x, y: e.pos.y });
       return false;
     }
-    e.ext = { x: dir.x * speed, y: dir.y * speed, t: duration, total: duration };
+    // 位移 = 速度 × 时长，所以按时长缩放天然也会缩击退/牵引距离
+    e.ext = { x: dir.x * speed, y: dir.y * speed, t: dur, total: dur };
     /* 击退是否打断蓄力由调用方决定 */
     if (interrupt && kind === 'knockback') e.windup = 0;
     return true;
@@ -1064,7 +1079,8 @@ export class World {
       if (e.rootT > 0) {
         e.rootT = Math.max(0, e.rootT - dt);
         if (e.rootT <= 0 && this.hasSkillShape('leap', 'sticky')) {
-          e.slowT = LEAP_SHAPE.stickyTime * e.rootBonus;
+          // 黏脚是减速（生理控制），同样吃生理抗性
+          e.slowT = LEAP_SHAPE.stickyTime * e.rootBonus * (1 - this.ccResist(e));
           e.slowFactor = Math.min(0.85, LEAP_SHAPE.stickySlow * e.rootBonus);
         }
       }
@@ -1403,7 +1419,7 @@ export class World {
       atkTimer: rand(0.25, 0.7),
       atkRange: def.atkRange,
       aggro: def.aggro,
-      immunity: def.immunity,
+      resist: def.resist,
       ranged: def.ranged,
       keepDist: def.keepDist,
       shotCd: rand(0.4, 1.3),

@@ -3,12 +3,10 @@ import type { Vec } from './util';
 export type { Vec };
 
 /**
- * 身份标签。
- * 两类来源（武器 / 技能）× 四种形态（飞行物 / 近战击 / 范围区 / 控制）。
+ * 属性身份标签（中立词条，不带阵营）。
+ * 阵营（友方 / 敌方）挂在实例上，见 content/identities.ts 的 scope。
  * 注意：范围区（zone）指的是"持续存在的区域"，不是伤害类型。
- * 以后「只对飞行物生效」「控制被免疫」这类组合都靠它筛选目标。
  */
-/** 属性身份：不带来源，武器 / 技能 / 域兽共用 */
 export type Tag =
   | 'flight'
   | 'meleeHit'
@@ -36,16 +34,18 @@ export interface CCEffect {
 }
 
 /**
- * 免控：不分等级，列出的类型直接免疫。
- * 来源免疫（weaponControl / skillControl）优先于种类免疫。
+ * 抗性身份（百分比 0~1）：100% 即绝对免疫。
+ * - mind  心理抗性：心理控制时长 ×(1-r)
+ * - body  生理抗性：生理控制时长 ×(1-r)（牵引/击退/减速/陷地/眩晕）
+ * - debuff 减益抗性：减益加成与减益时间 ×(1-r)
  */
-export interface Immunity {
-  /** 免疫全部控制 */
-  all?: boolean;
-  /** 心理免控 */
-  mind?: boolean;
-  /** 生理免控 */
-  body?: boolean;
+export interface Resistance {
+  /** 心理抗性 0~1 */
+  mind?: number;
+  /** 生理抗性 0~1 */
+  body?: number;
+  /** 减益抗性 0~1 */
+  debuff?: number;
 }
 
 export type GameState = 'title' | 'playing' | 'victory' | 'defeat';

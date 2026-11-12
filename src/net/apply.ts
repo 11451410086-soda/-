@@ -106,7 +106,7 @@ export function applySnapshot(world: World, wire: WorldWire): void {
         atkTimer: 0,
         atkRange: 0,
         aggro: 0,
-        immunity: {},
+        resist: {},
         ranged: false,
         keepDist: 0,
         shotCd: 0,
