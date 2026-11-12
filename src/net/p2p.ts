@@ -15,8 +15,18 @@ export type P2PStatus = 'connecting' | 'waiting' | 'connected' | 'failed';
 type SignalMsg =
   | { t: 'p2p-offer'; room: string; sdp: string }
   | { t: 'p2p-answer'; room: string; sdp: string }
-  | { t: 'p2p-ice'; room: string; cand: RTCIceCandidateInit; to: 'host' | 'guest' }
+  | { t: 'p2p-ice'; room: string; cand: RTCIceCandidateInit | RelayEnvelope; to?: 'host' | 'guest' }
   | { t: 'p2p-join'; room: string };
+
+/**
+ * 中继信封：直连建不起来时，把 P2P 报文塞进 `p2p-ice` 走信令服务器转发。
+ * 借用已有的消息类型，老版本服务器不用改也能转发。
+ */
+interface RelayEnvelope {
+  relay: 1;
+  kind: 'mode' | 'data';
+  data?: unknown;
+}
 
 export interface P2POptions {
   room: string;
@@ -74,6 +84,8 @@ const JOIN_RETRY_MS = 1200;
 /** 同一房间重复 join 时，offer 的最小间隔（避免双方互相打断） */
 const OFFER_COOLDOWN_MS = 4000;
 const CONNECT_TIMEOUT_MS = 15000;
+/** 直连迟迟不通时，多久自动切到服务端中继 */
+const RELAY_AFTER_MS = 7000;
 
 export class P2P {
   private pc: RTCPeerConnection | null = null;
@@ -90,6 +102,11 @@ export class P2P {
   private lastOfferAt = 0;
   private lastFailAt = 0;
   private wsRetry: number | null = null;
+  /** 走服务端中继（直连打不通时） */
+  private relayMode = false;
+  private relayTimer: number | null = null;
+  /** 中继模式下快照降到 30Hz，省带宽 */
+  private relayStateSkip = false;
 
   constructor(opts: P2POptions) {
     this.opts = opts;
@@ -124,6 +141,11 @@ export class P2P {
       this.joinTimer = window.setInterval(() => {
         if (!this.connected) this.sendSignal({ t: 'p2p-join', room: this.opts.room });
       }, JOIN_RETRY_MS);
+      // 中继模式：ws 重连后要重新声明一次，并重新武装超时
+      const forceRelay =
+        typeof location !== 'undefined' && /[?&]relay=1/.test(location.search);
+      if (this.relayMode || forceRelay) this.switchToRelay(true);
+      else this.armRelayTimer();
     };
 
     ws.onmessage = (ev) => this.onSignal(ev);
@@ -131,29 +153,80 @@ export class P2P {
       /* 具体处理放在 onclose */
     };
     ws.onclose = () => {
-      // 数据通道已经通了就别管信令了，游戏不受影响
-      if (this.closed || this.connected) return;
+      // 直连通了就不管信令；中继模式下信令就是数据通道，必须重连
+      if (this.closed) return;
+      if (this.connected && !this.relayMode) return;
       this.opts.onStatus?.('connecting', '信令服务器无响应，正在重试…');
       this.scheduleSignalRetry();
     };
+  }
+
+  /** 直连迟迟不通 → 切服务端中继 */
+  private armRelayTimer(): void {
+    if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
+    this.relayTimer = window.setTimeout(() => {
+      this.relayTimer = null;
+      if (!this.connected) this.switchToRelay(true);
+    }, RELAY_AFTER_MS);
+  }
+
+  private switchToRelay(notify: boolean): void {
+    if (this.closed || this.relayMode) return;
+    this.relayMode = true;
+    this.log('直连未通，切换到服务端中继');
+    if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
+    this.relayTimer = null;
+    if (notify) this.sendRelay({ kind: 'mode' });
+    this.becomeConnected();
+  }
+
+  private becomeConnected(): void {
+    if (this.connected) return;
+    this.connected = true;
+    this.clearConnectTimer();
+    this.opts.onStatus?.(
+      'connected',
+      this.relayMode ? '已连接（中继模式，延迟略高）' : '已连接',
+    );
+    this.opts.onOpen();
   }
 
   private scheduleSignalRetry(): void {
     if (this.wsRetry !== null) return;
     this.wsRetry = window.setTimeout(() => {
       this.wsRetry = null;
-      if (!this.closed && !this.connected) this.connectSignal();
+      if (!this.closed && (!this.connected || this.relayMode)) this.connectSignal();
     }, 2500);
   }
 
   /** 房主 → 客人：世界快照（不可靠通道，丢帧无妨） */
   sendState(payload: unknown): void {
+    if (this.relayMode) {
+      // 中继模式下隔一帧发一次，60Hz → 30Hz
+      this.relayStateSkip = !this.relayStateSkip;
+      if (this.relayStateSkip) return;
+      this.sendRelay({ kind: 'data', data: payload });
+      return;
+    }
     this.sendOn(this.stateDc, payload);
   }
 
   /** 客人 → 房主：输入（可靠通道，按键边沿不能丢） */
   sendInput(payload: unknown): void {
+    if (this.relayMode) {
+      this.sendRelay({ kind: 'data', data: payload });
+      return;
+    }
     this.sendOn(this.inputDc, payload);
+  }
+
+  /** 把 P2P 报文包成中继信封，借 p2p-ice 让信令服务器转发 */
+  private sendRelay(env: Partial<RelayEnvelope> & { kind: 'mode' | 'data' }): void {
+    this.sendSignal({
+      t: 'p2p-ice',
+      room: this.opts.room,
+      cand: { relay: 1, kind: env.kind, data: env.data } as RelayEnvelope,
+    });
   }
 
   close(): void {
@@ -162,9 +235,11 @@ export class P2P {
     if (this.joinTimer !== null) window.clearInterval(this.joinTimer);
     if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
     if (this.wsRetry !== null) window.clearTimeout(this.wsRetry);
+    if (this.relayTimer !== null) window.clearTimeout(this.relayTimer);
     this.joinTimer = null;
     this.connectTimer = null;
     this.wsRetry = null;
+    this.relayTimer = null;
     this.stateDc?.close();
     this.inputDc?.close();
     this.pc?.close();
@@ -209,7 +284,20 @@ export class P2P {
       return;
     }
 
-    if (msg.t === 'p2p-ice') this.addIce(msg.cand);
+    if (msg.t === 'p2p-ice') {
+      const cand = msg.cand as RelayEnvelope & RTCIceCandidateInit;
+      if ((cand as RelayEnvelope).relay === 1) {
+        // 中继信封
+        if (cand.kind === 'mode') {
+          this.switchToRelay(false);
+        } else {
+          this.becomeConnected();
+          this.opts.onData(JSON.stringify(cand.data));
+        }
+        return;
+      }
+      this.addIce(msg.cand as RTCIceCandidateInit);
+    }
   }
 
   private hostOffer(): void {
@@ -319,19 +407,20 @@ export class P2P {
     else this.inputDc = dc;
 
     dc.onopen = () => this.checkConnected();
-    dc.onmessage = (ev) => this.opts.onData(String(ev.data));
+    dc.onmessage = (ev) => {
+      // 已经切中继就只认中继的包，避免两条路都进来重复处理
+      if (this.relayMode) return;
+      this.opts.onData(String(ev.data));
+    };
     dc.onclose = () => {
-      if (this.connected && !this.closed) this.fail('对方已断开');
+      if (this.connected && !this.closed && !this.relayMode) this.fail('对方已断开');
     };
   }
 
   private checkConnected(): void {
-    if (this.connected) return;
+    if (this.connected || this.relayMode) return;
     if (this.stateDc?.readyState !== 'open' || this.inputDc?.readyState !== 'open') return;
-    this.connected = true;
-    this.clearConnectTimer();
-    this.opts.onStatus?.('connected', '已连接');
-    this.opts.onOpen();
+    this.becomeConnected();
   }
 
   private armConnectTimer(reason: string): void {
@@ -349,6 +438,12 @@ export class P2P {
 
   private fail(reason: string): void {
     if (this.closed) return;
+    // 直连失败/超时先尝试中继，别直接判死刑
+    if (!this.relayMode && reason !== '对方已断开') {
+      this.log('直连失败，改走中继：', reason);
+      this.switchToRelay(true);
+      return;
+    }
     this.log('fail:', reason);
     this.connected = false;
     this.clearConnectTimer();
