@@ -113,6 +113,8 @@ export class P2P {
   private lastFailAt = 0;
   private wsRetry: number | null = null;
   private wsRetryCount = 0;
+  /** 信令重试次数（用于提示「服务器可能休眠」） */
+  private signalTries = 0;
   /** 走服务端中继（直连打不通时） */
   private relayMode = false;
   private relayTimer: number | null = null;
@@ -154,6 +156,7 @@ export class P2P {
 
     ws.onopen = () => {
       this.wsRetryCount = 0;
+      this.signalTries = 0;
       this.sendSignal({ t: 'p2p-join', room: this.opts.room });
       this.opts.onStatus?.(
         'waiting',
@@ -179,9 +182,29 @@ export class P2P {
       // 直连通了就不管信令；中继模式下信令就是数据通道，必须重连
       if (this.closed) return;
       if (this.connected && !this.relayMode) return;
-      this.opts.onStatus?.('connecting', '信令服务器无响应，正在重试…');
+      this.signalTries++;
+      this.opts.onStatus?.(
+        'connecting',
+        this.signalTries > 2
+          ? `信令服务器无响应，正在重试（第 ${this.signalTries} 次）· 服务器可能在休眠，最多约 1 分钟`
+          : '信令服务器无响应，正在重试…',
+      );
+      this.warmUpServer();
       this.scheduleSignalRetry();
     };
+  }
+
+  /**
+   * Render 免费实例闲置会休眠，冷启动要 30~60 秒。
+   * WebSocket 握手在实例醒着之前会一直失败，先发个 HTTP 请求把它叫醒（失败也无所谓）。
+   */
+  private warmUpServer(): void {
+    try {
+      const url = this.opts.signalUrl.replace(/^wss?:/, (m) => (m === 'wss:' ? 'https:' : 'http:'));
+      void fetch(url, { mode: 'no-cors', cache: 'no-store' }).catch(() => undefined);
+    } catch {
+      /* 忽略 */
+    }
   }
 
   /** 直连迟迟不通 → 切服务端中继 */
