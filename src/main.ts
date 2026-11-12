@@ -1331,7 +1331,14 @@ function frame(now: number): void {
         me.aim = Math.atan2(inp.aimY - me.pos.y, inp.aimX - me.pos.x);
       }
       // 翻滚也本地起步：等房主确认要晚一整个快照间隔，闪避会显得「滑」
-      if (me.alive && inp.rollPressed && me.rollT <= 0 && me.stamina >= ROLL.cost) {
+      // 石卵（eggT>0）期间一定不能动，别做本地翻滚预测
+      if (
+        me.alive &&
+        me.eggT <= 0 &&
+        inp.rollPressed &&
+        me.rollT <= 0 &&
+        me.stamina >= ROLL.cost
+      ) {
         let dx = inp.moveX;
         let dy = inp.moveY;
         const len = Math.hypot(dx, dy);

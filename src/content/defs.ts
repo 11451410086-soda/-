@@ -492,10 +492,12 @@ export const RAIL_SHAPE = {
   chainRadius: 95,
   chainDamage: 10,
   chainMax: 2,
-  /** 动力分裂：每飞行多少距离分裂一次、分裂角度、伤害比例 */
+  /** 动力分裂：每飞行多少距离分裂一次、分裂角度、伤害比例、小弹速度 */
   splitEvery: 45,
   splitAngle: 0.62,
   splitDamageRatio: 0.55,
+  /** 小弹也是飞行物，速度单独配（以前写死在 420） */
+  splitSpeed: 420,
 };
 
 /** 后坐力：滞空时长与增益 */

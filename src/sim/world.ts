@@ -367,20 +367,6 @@ export class World {
     return dmg * (1 - SHIELD_WEAPON.blockDR);
   }
 
-  /** 底盾：扇形是否压在脚下的圆形抵挡范围上 */
-  groundOverlapsFan(e: Enemy): boolean {
-    const fan = ENEMIES[e.kind].fan;
-    const p = this.player;
-    if (!fan) return false;
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const x = p.pos.x + Math.cos(a) * SHIELD_WEAPON.groundRadius;
-      const y = p.pos.y + 3 + Math.sin(a) * SHIELD_WEAPON.groundRadius;
-      if (inFan(e.pos.x, e.pos.y, e.windupAngle, fan.halfAngle, fan.radius, x, y, 2)) return true;
-    }
-    return false;
-  }
-
   /** 攻击的扇形是否压在盾面上（不看方向来源，只看范围是否重叠） */
   shieldOverlapsFan(e: Enemy, pl?: Player): boolean {
     const fan = ENEMIES[e.kind].fan;
@@ -1483,13 +1469,16 @@ export class World {
       const a = l.angle + RAIL_SHAPE.splitAngle * sign;
       this.lasers.push({
         pos: { x: l.pos.x, y: l.pos.y },
-        vel: { x: Math.cos(a) * 420, y: Math.sin(a) * 420 },
+        vel: {
+          x: Math.cos(a) * RAIL_SHAPE.splitSpeed,
+          y: Math.sin(a) * RAIL_SHAPE.splitSpeed,
+        },
         angle: a,
         damage: l.damage * RAIL_SHAPE.splitDamageRatio,
         lift: l.lift,
         pierce: 0,
         hitIds: [],
-        life: 95 / 420,
+        life: 95 / RAIL_SHAPE.splitSpeed,
         travel: 0,
         blast: 0,
         radius: l.radius * 0.55,
