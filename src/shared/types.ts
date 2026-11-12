@@ -67,4 +67,6 @@ export interface InputSnapshot {
   skillF: boolean;
   panel: boolean;
   skip: boolean;
+  /** 客人输入序号：房主回报「已处理到哪一帧」，客人据此重放未确认的输入 */
+  seq?: number;
 }

@@ -1,10 +1,12 @@
 import type { World } from '../sim/world';
 
 /** 世界 → 可传输快照（P2P 房主用）。events 是这一拍攒下来的特效事件，客人靠它播特效 */
-export function serializeWorld(w: World, events: unknown[] = []): unknown {
+export function serializeWorld(w: World, events: unknown[] = [], guestSeq?: number): unknown {
   return {
     time: w.time,
     state: w.state,
+    /** 房主已经处理到客人的第几帧输入（客人用它重放未确认的移动） */
+    guestSeq: guestSeq ?? 0,
     wave: { n: w.wave.n, phase: w.wave.phase, timer: w.wave.timer, remaining: w.remainingEnemies() },
     players: w.players.map((p, i) => ({
       id: i + 1,

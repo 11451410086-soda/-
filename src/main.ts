@@ -557,6 +557,13 @@ const p2pEvents: WorldEvent[] = [];
 let stateSent = 0;
 let lastSeq = -2;
 let lastAppliedSnap: WorldWire | null = null;
+/** 房主：收到的客人输入序号 / 最近一拍真正消费到的序号 */
+let lastGuestSeq = 0;
+let appliedGuestSeq = 0;
+/** 客人：自己发出的输入序号 + 未确认输入缓冲（用于重放预测） */
+let guestSeqOut = 0;
+let ackedGuestSeq = 0;
+const guestInputBuf: { seq: number; moveX: number; moveY: number }[] = [];
 
 /* ---------------- 联机状态 ---------------- */
 
@@ -739,6 +746,9 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
           // 客人收到第一帧快照才建世界，避免空跑
           if (p2pRole === 'guest' && !world) enterGuestWorld();
         } else if (msg.t === 'input' && msg.snap) {
+          if (typeof (msg.snap as { seq?: number }).seq === 'number') {
+            lastGuestSeq = (msg.snap as { seq?: number }).seq!;
+          }
           p2pInput = mergeInput(p2pInput, msg.snap);
         } else if (msg.t === 'lobby') {
           if (p2pRole === 'host') {
@@ -1179,6 +1189,8 @@ function hostCoopTick(dt: number): void {
       console.log('[net] 房主边沿', inp.skillQ ? 'Q' : inp.skillE ? 'E' : 'fire');
     }
     world.tick([inp, guestInp], STEP);
+    // 记下这一拍真正消费到的客人输入序号，随快照回报（客人据此重放）
+    appliedGuestSeq = lastGuestSeq;
     clearInputEdges(guestInp);
     acc -= STEP;
     guard++;
@@ -1197,7 +1209,7 @@ function hostCoopSend(dt: number): void {
   p2pSendAcc += dt;
   if (p2pSendAcc < 1 / 60) return;
   p2pSendAcc = 0;
-  const wire = serializeWorld(world, p2pEvents.splice(0, p2pEvents.length));
+  const wire = serializeWorld(world, p2pEvents.splice(0, p2pEvents.length), appliedGuestSeq);
   p2p.sendState({ t: 'state', world: wire });
   if (DEBUG) measureSnapSize(wire);
   if (DEBUG && stateSent < 3) {
@@ -1351,6 +1363,25 @@ function frame(now: number): void {
         applySnapshot(world, p2pSnap);
         snapAt = tAp;
         tApply += performance.now() - tAp;
+        // 重放预测：把自己钉在房主的权威位置上，再把「房主还没处理到的输入」重放一遍。
+        // 这样既没有延迟，也不会被纠偏拽回去（以前是追一个落后的目标，手感像被牵住）。
+        const seqAck = (p2pSnap as { guestSeq?: number }).guestSeq ?? 0;
+        if (seqAck > ackedGuestSeq) ackedGuestSeq = seqAck;
+        const aw = p2pSnap.players[world.localIndex];
+        const me0 = world.player;
+        if (aw && me0.alive) {
+          me0.pos.x = aw.x;
+          me0.pos.y = aw.y;
+          let replay = 0;
+          for (const b of guestInputBuf) {
+            if (b.seq <= ackedGuestSeq) continue;
+            if (replay++ > 30) break;
+            world.predictPlayerMove(me0, { moveX: b.moveX, moveY: b.moveY } as InputSnapshot, 1 / 60);
+          }
+          while (guestInputBuf.length > 0 && guestInputBuf[0].seq <= ackedGuestSeq) {
+            guestInputBuf.shift();
+          }
+        }
       }
       // 面板开关是离散状态，变化即发，不必挤进 30Hz 输入
       const gpOpen = world.player.panelOpen;
@@ -1365,7 +1396,11 @@ function frame(now: number): void {
           if (DEBUG && (inp.firePressed || inp.skillQ || inp.rollPressed)) {
             console.log('[net] 客人发出边沿', inp.firePressed ? 'fire' : inp.skillQ ? 'Q' : 'roll');
           }
-          p2p.sendInput({ t: 'input', snap: inp });
+          guestSeqOut++;
+          p2p.sendInput({ t: 'input', snap: { ...inp, seq: guestSeqOut } });
+          // 记下这帧的移动输入：房主确认前，这些要用于本地重放
+          guestInputBuf.push({ seq: guestSeqOut, moveX: inp.moveX, moveY: inp.moveY });
+          if (guestInputBuf.length > 240) guestInputBuf.shift();
           // 清的是按键边沿表（edges），不是快照；否则技能键会被持续发送
           clearEdges();
         }
@@ -1445,20 +1480,14 @@ function frame(now: number): void {
           projMoved = 0;
         }
       }
-      // 软纠偏：小误差是网络延迟造成的（房主看到的是你 RTT 之前的位置），不要管；
-      // 误差明显变大才慢慢拉回，特别大（传送/复活/状态不同）才直接对齐。
+      // 只做「大误差兜底」：小误差是网络延迟，靠重放预测吸收，不再往回拽（否则会有被牵住的手感）
       const net2 = me as unknown as { tx?: number; ty?: number };
       if (net2.tx !== undefined) {
         const dx = net2.tx - me.pos.x;
         const dy = (net2.ty ?? 0) - me.pos.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 > 90 * 90) {
+        if (dx * dx + dy * dy > 150 * 150) {
           me.pos.x = net2.tx;
           me.pos.y = net2.ty!;
-        } else if (d2 > 22 * 22) {
-          const k = Math.min(1, dt * 3);
-          me.pos.x += dx * k;
-          me.pos.y += dy * k;
         }
       }
     }

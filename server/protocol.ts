@@ -45,6 +45,8 @@ export interface WorldWire {
   bottles: BottleWire[];
   crystals: CrystalWire[];
   events: unknown[];
+  /** 房主已处理到客人的第几帧输入 */
+  guestSeq?: number;
   /** 屏幕震动强度，客人端要跟着抖 */
   shake?: number;
   /** 玩家投出的黑洞雷（抛物线飞行中） */
