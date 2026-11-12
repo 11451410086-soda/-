@@ -1406,6 +1406,10 @@ body {
   padding: 12px 14px;
 }
 
+.codex-card.wide {
+  grid-column: 1 / -1;
+}
+
 .codex-head {
   display: flex;
   justify-content: space-between;

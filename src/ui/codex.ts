@@ -46,6 +46,8 @@ interface Entry {
   attrs: string[];
   /** 数值身份（名称 → 值） */
   nums: [string, string][];
+  /** 占满整行（内容长的分类卡用） */
+  wide?: boolean;
 }
 
 const WEAPONS: Entry[] = [
@@ -267,31 +269,105 @@ function enemyEntries(): Entry[] {
 
 /* ---------------- 身份大全 ---------------- */
 
+/**
+ * 身份大全：按设计表的结构排列
+ * 武器类别身份 → 属性身份 → 武器数值身份 → 技能数值身份 → 角色数值身份 → 域兽数值身份 → 抗性身份
+ */
 function identityEntries(): Entry[] {
   const out: Entry[] = [];
 
+  // 1. 武器类别身份
   out.push({
-    name: '阵营规则',
-    sub: '只有属性身份分友方 / 敌方',
-    desc:
-      '属性身份记「效果属于哪一方」，不记「对谁有利」：玩家投出的黑洞雷是友方范围区（作用对象是敌方），' +
-      '祛鳞治疗是敌方增益效果（治疗域兽）。数值身份中立，不带阵营，阵营从来源继承。',
-    attrs: ['友方', '敌方'],
+    name: '武器类别身份',
+    sub: '不分类阵营',
+    desc: '武器的大类，决定操作方式。',
+    attrs: ['近战', '远程'],
     nums: [],
   });
 
-  for (const d of Object.values(IDENTITIES)) {
-    if (d.group !== 'attr') continue;
-    const numNames = numsOf(d.key).map((n) => n.name).join(' · ');
-    out.push({
-      name: d.name,
-      sub: '属性身份',
-      desc: (ATTR_DESC[d.key] ?? '') + (numNames ? '　挂载的数值身份：' + numNames : ''),
-      attrs: [attrName(d.key, 'ally'), attrName(d.key, 'enemy')],
-      nums: [],
-    });
-  }
+  // 2. 属性身份（分友方 / 敌方）
+  out.push({
+    name: '属性身份',
+    sub: '分友方 / 敌方',
+    desc:
+      '记「效果属于哪一方」，不记「对谁有利」：黑洞雷是友方范围区，越机毒雾是敌方范围区，祛鳞治疗是敌方增益效果。',
+    attrs: ['飞行物', '近战击', '范围区', '心理控制', '生理控制', '增益效果', '减益效果'],
+    nums: [
+      ['飞行物', '以弹体形式飞行，可被减速、拦截或加成'],
+      ['近战击', '贴身或扇形范围内的直接打击'],
+      ['范围区', '持续存在的区域（吸引区、毒雾），有范围与时间'],
+      ['心理控制', '作用于心智的控制，当前版本暂无来源（预留）'],
+      ['生理控制', '牵引 / 击退 / 减速 / 陷地 / 眩晕'],
+      ['增益效果', '提升自身或友方能力的正面效果'],
+      ['减益效果', '削弱目标的负面效果（减伤、减速等）'],
+    ],
+    wide: true,
+  });
 
+  // 3. 远程 / 近战武器数值身份
+  out.push({
+    name: '远程 / 近战武器数值身份',
+    sub: '武器通用',
+    desc: '同一类按属性各有一份（飞行物 / 近战击 / 范围区）。',
+    attrs: [],
+    nums: [
+      ['伤害', '飞行物伤害 · 近战击伤害 · 范围区伤害'],
+      ['间隔', '飞行物间隔 · 近战击间隔 · 范围区间隔'],
+      ['范围', '飞行物范围 · 近战击范围 · 范围区范围'],
+      ['时间', '范围区时间'],
+      ['控制', '控制时长'],
+      ['加成', '增益加成 · 减益加成 · 增益时间 · 减益时间'],
+      ['装填', '回复时间 · 容量'],
+    ],
+    wide: true,
+  });
+
+  // 4. 技能数值身份
+  out.push({
+    name: '技能数值身份',
+    sub: '技能通用',
+    desc: '技能没有「间隔」，但需要冷却。',
+    attrs: [],
+    nums: [
+      ['伤害', '飞行物伤害 · 近战击伤害 · 范围区伤害'],
+      ['范围', '飞行物范围 · 近战击范围 · 范围区范围'],
+      ['时间', '范围区时间'],
+      ['冷却', '冷却时间 · 冷却缩减'],
+      ['控制', '控制时长'],
+      ['加成', '增益加成 · 减益加成 · 增益时间 · 减益时间'],
+      ['容量', '容量'],
+    ],
+    wide: true,
+  });
+
+  // 5. 角色数值身份
+  out.push({
+    name: '角色数值身份',
+    sub: '域卫 / 域兽共用',
+    desc: '生命、移动、承受与体力。',
+    attrs: ['生命值', '移速', '减伤率', '体力值', '体力回复率', '生命回复', '护盾值'],
+    nums: [],
+    wide: true,
+  });
+
+  // 6. 域兽数值身份
+  out.push({
+    name: '域兽数值身份',
+    sub: '基础属性 + 攻击数值',
+    desc: '域兽用角色基础属性，再加自己的攻击数值。',
+    attrs: [],
+    nums: [
+      ['基础', '生命值 · 移速 · 减伤率 · 护盾值'],
+      ['伤害', '飞行物伤害 · 近战击伤害 · 范围区伤害'],
+      ['间隔', '飞行物间隔 · 近战击间隔 · 范围区间隔'],
+      ['范围', '飞行物范围 · 近战击范围 · 范围区范围'],
+      ['时间', '范围区时间 · 控制时长'],
+      ['加成', '增益加成 · 减益加成 · 增益时间 · 减益时间'],
+    ],
+    wide: true,
+  });
+
+  // 7. 抗性身份
   out.push({
     name: '抗性身份',
     sub: '百分比 · 100% 即绝对免疫',
@@ -302,72 +378,7 @@ function identityEntries(): Entry[] {
     nums: [],
   });
 
-  // 属性数值身份：挂在属性身份下的数值，按「数值类型」分组
-  const attrNums = Object.values(IDENTITIES).filter(
-    (d) => d.group === 'num' && (d.attrs ?? []).length > 0,
-  );
-  const kindOf = (name: string): string => {
-    // 用后缀判断：范围区时间要归「时间」，不能因为带「范围」就进「范围」
-    if (name.endsWith('伤害')) return '伤害';
-    if (name.endsWith('间隔')) return '间隔';
-    if (name.endsWith('范围')) return '范围';
-    if (name.endsWith('加成')) return '加成';
-    if (name.endsWith('时长')) return '控制';
-    if (name.endsWith('时间')) return '时间';
-    return '其他';
-  };
-  const kindOrder = ['伤害', '间隔', '范围', '时间', '控制', '加成', '其他'];
-  const kindRows: [string, string][] = [];
-  for (const kind of kindOrder) {
-    const items = attrNums.filter((d) => kindOf(d.name) === kind);
-    if (items.length > 0) kindRows.push([kind, items.map((d) => d.name).join(' · ')]);
-  }
-  out.push({
-    name: '属性数值身份',
-    sub: attrNums.length + ' 项',
-    desc:
-      '挂在属性身份下的数值，名字由「属性 + 数值类型」拼成（飞行物伤害、近战击范围…）。' +
-      '同一类型下按属性各有一份，改哪个属性的数值就改哪个身份。',
-    attrs: [],
-    nums: kindRows,
-  });
-
-  // 通用数值身份按归属分卡：武器 / 技能 / 角色
-  const general = Object.values(IDENTITIES).filter(
-    (d) => d.group === 'num' && (d.attrs ?? []).length === 0,
-  );
-  const ownerCards: Array<{ owner: 'weapon' | 'skill' | 'character'; name: string; desc: string }> = [
-    { owner: 'weapon', name: '通用数值身份 · 武器', desc: '武器专用：装填与容量。' },
-    { owner: 'skill', name: '通用数值身份 · 技能', desc: '技能专用：冷却相关。' },
-    {
-      owner: 'character',
-      name: '通用数值身份 · 角色',
-      desc: '域卫与域兽共用：生命、移动、承受与体力。',
-    },
-  ];
-  for (const c of ownerCards) {
-    const items = general.filter((d) => d.owner === c.owner);
-    if (items.length === 0) continue;
-    out.push({
-      name: c.name,
-      sub: items.length + ' 项',
-      desc: c.desc + '　' + items.map((d) => d.name).join(' · '),
-      attrs: [],
-      nums: [],
-    });
-  }
-
-  const other = general.filter((d) => !d.owner);
-  if (other.length > 0) {
-    out.push({
-      name: '其他数值身份',
-      sub: '未归类',
-      desc: other.map((d) => d.name).join(' · '),
-      attrs: [],
-      nums: [],
-    });
-  }
-
+  // 8. 事物身份一览（哪个东西挂了哪些身份）
   const roster: [string, string][] = [];
   for (const a of ABILITY_IDENTITIES) roster.push([a.name, tagsOf(a.key).join(' + ') || '纯数值']);
   for (const a of SHAPE_IDENTITIES) roster.push([a.name + '（塑造）', tagsOf(a.key).join(' + ') || '纯数值']);
@@ -377,6 +388,7 @@ function identityEntries(): Entry[] {
     desc: '属性身份全名，按「阵营 + 属性」显示。',
     attrs: [],
     nums: roster,
+    wide: true,
   });
 
   return out;
@@ -446,7 +458,7 @@ export class Codex {
         const nums = e.nums
           .map(([k, v]) => `<div class="codex-row"><span>${k}</span><b>${v}</b></div>`)
           .join('');
-        return `<div class="codex-card">
+        return `<div class="codex-card${e.wide ? ' wide' : ''}">
           <div class="codex-head"><b>${e.name}</b><span>${e.sub ?? ''}</span></div>
           <p class="codex-desc">${e.desc}</p>
           ${attrs ? `<div class="codex-block"><div class="codex-label">属性身份</div><div class="codex-tags">${attrs}</div></div>` : ''}
