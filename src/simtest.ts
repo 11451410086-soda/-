@@ -397,6 +397,32 @@ const input = {
     );
   }
 
+  // 场上有两个区：第一个不可引爆、第二个可引爆 —— 子弹在第二个里要能炸
+  {
+    const wf = makeWorld();
+    wf.addPlayer("railgun");
+    const guest = wf.players[1];
+    guest.coins = 500;
+    const prev = wf.localIndex;
+    wf.localIndex = 1;
+    wf.buySkillShape("blackhole", "detonate");
+    wf.localIndex = prev;
+    // 房主的区（无斥爆）在左，客人的区（有斥爆）在右
+    wf.zones.push({ id: 1, owner: "player", ownerIdx: 0, pos: { x: 200, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+    wf.zones.push({ id: 2, owner: "player", ownerIdx: 1, pos: { x: 520, y: 150 }, radius: 66, ttl: 3, maxTtl: 3, tick: 0.6, blastLock: 0, pulse: 0 });
+    wf.lasers.push({
+      pos: { x: 520, y: 150 }, vel: { x: 0, y: 0 }, angle: 0, damage: 10, pierce: 0,
+      hitIds: [], life: 1, travel: 0, blast: 0, radius: 9, orb: true, tag: "flight",
+      ownerIdx: 0, lift: 0, detonated: false, splitCount: 0, small: false, homing: false, targetZone: 0,
+    });
+    wf.updateLasers(1 / 60);
+    const evt = wf.events.find((e: any) => e.type === "detonate") as any;
+    check(
+      "斥爆：两个区时只炸「有斥爆」的那个区",
+      !!evt && Math.abs(evt.x - 520) < 1,
+    );
+  }
+
   // 引力超标
   const w4 = makeWorld();
   w4.player.coins = 500;

@@ -437,16 +437,17 @@ export class World {
       const d = Math.hypot(dx, dy) || 1;
       this.applyCC(e, 'knockback', { x: dx / d, y: dy / d }, knock, cfg.knockTime, false);
     }
-    // 斥爆：近战击命中引力范围也会引爆（看范围区主人有没有买斥爆）
+    // 斥爆：近战击命中「可引爆」的引力范围也会引爆（区主人买了斥爆就算）
     if (this.detonateCd <= 0) {
-      const z = this.blackholeZone();
-      if (z && this.hasSkillShape('blackhole', 'detonate', this.zoneOwner(z))) {
+      for (const z of this.playerZones()) {
+        if (!this.zoneHasShape(z, 'blackhole', 'detonate')) continue;
         const d = dist(p.pos, z.pos);
         const inAngle = Math.abs(angleDiff(angleTo(p.pos, z.pos), p.shieldAngle)) <= half + 0.35;
         if (d <= range + z.radius && inAngle) {
           this.explodeAt(z.pos.x, z.pos.y, BLACKHOLE_SHAPE.blastRadius, BLACKHOLE_SHAPE.blastDamage);
           this.events.push({ type: 'detonate', x: z.pos.x, y: z.pos.y });
           this.detonateCd = BLACKHOLE_SHAPE.blastCd;
+          break;
         }
       }
     }
@@ -621,9 +622,9 @@ export class World {
       return true;
     }
 
-    // 白扩：引力范围存在时再按 Q
+    // 白扩：只能引爆「自己投的」引力范围
     if (input.skillQ && this.hasSkillShape('blackhole', 'whiteout')) {
-      const z = this.blackholeZone();
+      const z = this.blackholeZoneOf(p);
       if (z) {
         this.whiteout(z);
         return true;
@@ -783,15 +784,17 @@ export class World {
   checkDetonate(l: Laser): boolean {
     if (this.detonateCd > 0) return false;
     if (l.tag !== 'flight') return false;
-    const z = this.blackholeZone();
-    if (!z) return false;
-    if (!this.hasSkillShape('blackhole', 'detonate', this.zoneOwner(z))) return false;
-    if (dist(l.pos, z.pos) > z.radius) return false;
-    // 从引力范围中心向外扩散
-    this.explodeAt(z.pos.x, z.pos.y, BLACKHOLE_SHAPE.blastRadius, BLACKHOLE_SHAPE.blastDamage);
-    this.events.push({ type: 'detonate', x: z.pos.x, y: z.pos.y });
-    this.detonateCd = BLACKHOLE_SHAPE.blastCd;
-    return true;
+    // 找「可引爆」的范围区：区主人买了斥爆，且子弹在区内
+    for (const z of this.playerZones()) {
+      if (!this.zoneHasShape(z, 'blackhole', 'detonate')) continue;
+      if (dist(l.pos, z.pos) > z.radius) continue;
+      // 从引力范围中心向外扩散
+      this.explodeAt(z.pos.x, z.pos.y, BLACKHOLE_SHAPE.blastRadius, BLACKHOLE_SHAPE.blastDamage);
+      this.events.push({ type: 'detonate', x: z.pos.x, y: z.pos.y });
+      this.detonateCd = BLACKHOLE_SHAPE.blastCd;
+      return true;
+    }
+    return false;
   }
 
   /** 把范围内的敌人朝中心拉一段（技能控制） */
@@ -859,11 +862,12 @@ export class World {
         this.pullEnemies(z);
       }
     }
-    // 溢出：站在黑洞范围区里的玩家获得提速（联机按玩家各自判定）
+    // 引力超标：区主人买了这个塑造，站在他区里的玩家都能获得增益
     for (const pl of this.players) {
-      if (!this.hasSkillShape('blackhole', 'overflow', pl)) continue;
-      const z = this.blackholeZone();
-      if (z && dist(pl.pos, z.pos) <= z.radius) pl.zoneBuffT = 0.2;
+      const z = this.playerZones().find(
+        (zz) => this.zoneHasShape(zz, 'blackhole', 'overflow') && dist(pl.pos, zz.pos) <= zz.radius,
+      );
+      if (z) pl.zoneBuffT = 0.2;
     }
     this.zones = this.zones.filter((z) => z.ttl > 0);
   }
@@ -890,13 +894,15 @@ export class World {
     p.leapHangT = 0;
     p.leapT = 0;
     p.landT = 0.18;
-    // 斥爆：近战击（陨落落地）命中引力范围也会引爆（看范围区主人有没有买斥爆）
+    // 斥爆：近战击（陨落落地）命中「可引爆」的引力范围也会引爆
     if (this.detonateCd <= 0) {
-      const z = this.blackholeZone();
-      if (z && this.hasSkillShape('blackhole', 'detonate', this.zoneOwner(z)) && dist(p.pos, z.pos) <= radius + z.radius) {
+      for (const z of this.playerZones()) {
+        if (!this.zoneHasShape(z, 'blackhole', 'detonate')) continue;
+        if (dist(p.pos, z.pos) > radius + z.radius) continue;
         this.explodeAt(z.pos.x, z.pos.y, BLACKHOLE_SHAPE.blastRadius, BLACKHOLE_SHAPE.blastDamage);
         this.events.push({ type: 'detonate', x: z.pos.x, y: z.pos.y });
         this.detonateCd = BLACKHOLE_SHAPE.blastCd;
+        break;
       }
     }
 
@@ -1569,18 +1575,12 @@ export class World {
   updateShots(dt: number): void {
     for (const s of this.shots) {
       let slow = 1;
-      // 噬速力按「范围区归属者」的塑造判定，不是房主；
-      // 没有归属信息时（老快照/测试）退回本地玩家
-      const slowZone = this.blackholeZone();
-      const slowOwner =
-        slowZone?.ownerIdx !== undefined ? this.players[slowZone.ownerIdx] : this.player;
-      if (
-        slowZone &&
-        slowOwner &&
-        this.hasSkillShape('blackhole', 'slowfield', slowOwner) &&
-        dist(s.pos, slowZone.pos) <= slowZone.radius
-      ) {
+      // 噬速力按「范围区归属者」的塑造判定：只要有一个可减速的区覆盖到这颗弹就减速
+      for (const z of this.playerZones()) {
+        if (!this.zoneHasShape(z, 'blackhole', 'slowfield')) continue;
+        if (dist(s.pos, z.pos) > z.radius) continue;
         slow = BLACKHOLE_SHAPE.slowMult;
+        break;
       }
       s.pos.x += s.vel.x * dt * slow;
       s.pos.y += s.vel.y * dt * slow;
@@ -1867,6 +1867,28 @@ export class World {
   /** 严格：只认「玩家自己投出的黑洞范围区」 */
   blackholeZone(): Zone | undefined {
     return this.zones.find((z) => z.ttl > 0 && z.owner === 'player' && !z.poison);
+  }
+
+  /** 某个玩家自己投出的黑洞范围区（没归属信息的老数据按本地玩家算） */
+  blackholeZoneOf(p: Player): Zone | undefined {
+    const idx = this.players.indexOf(p);
+    return this.zones.find(
+      (z) =>
+        z.ttl > 0 &&
+        z.owner === 'player' &&
+        !z.poison &&
+        (z.ownerIdx === idx || (z.ownerIdx === undefined && p === this.player)),
+    );
+  }
+
+  /** 所有活着的玩家黑洞范围区 */
+  playerZones(): Zone[] {
+    return this.zones.filter((z) => z.ttl > 0 && z.owner === 'player' && !z.poison);
+  }
+
+  /** 这个范围区的主人有没有买某个技能塑造 */
+  zoneHasShape(z: Zone, skillId: string, shapeId: string): boolean {
+    return this.hasSkillShape(skillId, shapeId, this.zoneOwner(z));
   }
 
   /** 当前武器的专属塑造 */
