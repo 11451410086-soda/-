@@ -23,6 +23,7 @@ export interface InputSnapshotWire {
   skillQ: boolean;
   skillE: boolean;
   skillF: boolean;
+  skillG?: boolean;
   panel: boolean;
   skip: boolean;
 }
@@ -66,6 +67,8 @@ export interface PlayerWire {
   shieldAngle: number;
   meteorT: number;
   stoneT: number;
+  frenzyT?: number;
+  frenzyBuff?: number;
   eggT: number;
   leapT: number;
   leapHangT: number;

@@ -125,3 +125,15 @@
   - 部署：`cd worker && npx wrangler login && npx wrangler deploy`
   - 切换：改 `.github/workflows/pages.yml` 里的 `VITE_SIGNAL_URL`，或临时用 `?signal=wss://xxx.workers.dev` 验证。
 - 客户端信令地址优先级：`?signal=` > 构建注入 `VITE_SIGNAL_URL` > 同源（本地开发连 3001）。
+
+### J. 狂热（第 4 技能）
+- **技能**：`frenzy`（G 键），自身进入狂热：飞行物/近战击间隔与回复时间缩短（增益加成），持续一段时间（增益时间）。
+- **参数**：`FRENZY`（`content/defs.ts`）：时长 5 秒、间隔 ×0.55（下限 ×0.35）、冷却 22 秒。
+- **玩家状态**：`frenzyT / frenzyBuff / frenzyDamage`，另加通用 `buffPower / buffTime`（增益加成 / 增益时间的来源倍率）。
+- **塑造**：
+  - 激励 `inspire`：开启时把同一份狂热传给 230px 内的队友。
+  - 状态良好 `healthy`：狂热期间每秒回血（角色数值身份「生命回复」）。
+  - 愈战愈勇 `momentum`：狂热期间每造成 60 伤害，`frenzyBuff +0.15`（上限 +0.9），只作用于自身。
+- **接入点**：`startFrenzy` / `frenzyIntervalMult`；间隔缩放作用于电磁炮开火、换弹、盾击；愈战愈勇在 `damageEnemy` 里按 `actor` 累计。
+- **联机**：`InputSnapshot.skillG` 走同一条输入通道；快照新增 `frenzyT / frenzyBuff`，客人 HUD 同步。
+- **身份**：狂热 / 激励 / 状态良好 / 愈战愈勇 都挂「友方增益效果」；图鉴「范围区间隔」已从飞行物/近战击间隔里拆开，含义是「范围区造成效果的时间间隔」。

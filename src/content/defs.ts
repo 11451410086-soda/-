@@ -383,6 +383,33 @@ export const SKILLS: Record<string, SkillDef> = {
     cd: 18,
     targeting: "none",
   },
+  frenzy: {
+    id: "frenzy",
+    name: "狂热",
+    desc: "进入狂热状态：飞行物 / 近战击 间隔与回复时间缩短[[增益效果]]（增益加成），持续一段时间（增益时间）。",
+    cd: 22,
+    targeting: "none",
+  },
+};
+
+/** 狂热（第 4 技能）参数 */
+export const FRENZY = {
+  /** 基础持续（增益时间） */
+  duration: 5,
+  /** 间隔与回复时间的缩短倍率：满加成时乘这个 */
+  intervalMult: 0.55,
+  /** 再怎么叠也不会低于这个倍率 */
+  minMult: 0.35,
+  /** 激励：把狂热传给队友的范围 */
+  inspireRadius: 230,
+  /** 状态良好：狂热期间每秒回血 */
+  regen: 7,
+  /** 愈战愈勇：造成多少伤害叠一层 */
+  momentumThreshold: 60,
+  /** 每层加多少增益加成 */
+  momentumStep: 0.15,
+  /** 增益加成最多叠到多少 */
+  momentumMax: 0.9,
 };
 
 export const BLACKHOLE = {
@@ -490,6 +517,26 @@ export const SKILL_SHAPES: Record<string, SkillShapeDef[]> = {
       name: '磐能吸取',
       desc: '技能持续期间造成的伤害按比例转化为护盾值。',
       cost: 110,
+    },
+  ],
+  frenzy: [
+    {
+      id: 'inspire',
+      name: '激励',
+      desc: '狂热开启时，周围的队友也获得狂热（传递的增益效果完全一致）。',
+      cost: 110,
+    },
+    {
+      id: 'healthy',
+      name: '状态良好',
+      desc: '狂热期间额外获得生命回复（角色数值身份）。',
+      cost: 90,
+    },
+    {
+      id: 'momentum',
+      name: '愈战愈勇',
+      desc: '狂热期间对域兽造成的伤害每累计一定阈值，狂热自身的增益加成提高（只作用于自身）。',
+      cost: 120,
     },
   ],
 };

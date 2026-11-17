@@ -187,6 +187,7 @@ export const ABILITY_IDENTITIES: AbilityIdentity[] = [
       { attr: 'debuff', scope: 'ally' },
     ],
   },
+  { key: 'frenzy', name: '狂热', attrs: [{ attr: 'buff', scope: 'ally' }] },
   { key: 'puzeFan', name: '普则·扇形劈击', attrs: [{ attr: 'meleeHit', scope: 'enemy' }] },
   { key: 'yuejiBottle', name: '越机·毒雾瓶', attrs: [{ attr: 'flight', scope: 'enemy' }] },
   { key: 'yuejiZone', name: '越机·毒雾', attrs: [{ attr: 'zone', scope: 'enemy' }] },
@@ -220,6 +221,10 @@ export const SHAPE_IDENTITIES: AbilityIdentity[] = [
   },
   { key: 'overflow', name: '引力超标', attrs: [{ attr: 'buff', scope: 'ally' }] },
   { key: 'slowfield', name: '噬速力', attrs: [{ attr: 'debuff', scope: 'ally' }] },
+  // 狂热
+  { key: 'inspire', name: '激励', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  { key: 'healthy', name: '状态良好', attrs: [{ attr: 'buff', scope: 'ally' }] },
+  { key: 'momentum', name: '愈战愈勇', attrs: [{ attr: 'buff', scope: 'ally' }] },
   // 陨落
   { key: 'deepen', name: '状况加深', attrs: [] },
   { key: 'recoil', name: '后坐力', attrs: [] },

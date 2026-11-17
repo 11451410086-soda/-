@@ -8,6 +8,7 @@ import {
   POINTS_PER_WAVE,
   COIN_PER_KILL,
   COIN_PER_WAVE,
+  FRENZY,
   START_COINS,
   coinWaveBonus,
   SKILLS,
@@ -118,9 +119,14 @@ export class World {
       rollDir: { x: 0, y: 0 },
       stamina: HERO_PROFILES.guard.maxStamina,
       rollIframe: 0,
-      skills: ['blackhole', 'leap', 'stone'],
-      skillCd: [0, 0, 0],
+      skills: ['blackhole', 'leap', 'stone', 'frenzy'],
+      skillCd: [0, 0, 0, 0],
       stoneT: 0,
+      frenzyT: 0,
+      frenzyBuff: 1,
+      frenzyDamage: 0,
+      buffPower: 1,
+      buffTime: 1,
       skillShapes: {},
       zoneBuffT: 0,
       shield: 0,
@@ -410,7 +416,8 @@ export class World {
     }
 
     const broken = p.meteorT > 0;
-    const interval = broken ? SHIELD_WEAPON.elbowInterval : SHIELD_WEAPON.interval;
+    const interval =
+      (broken ? SHIELD_WEAPON.elbowInterval : SHIELD_WEAPON.interval) * this.frenzyIntervalMult(p);
     const cost = SHIELD_WEAPON.staminaCost;
 
     // 左键：盾击 / 肘击
@@ -464,11 +471,45 @@ export class World {
 
   /* ---------------- 域卫（通用） ---------------- */
 
+  /** 狂热：进入增益状态，间隔与回复时间缩短 */
+  startFrenzy(p: Player): void {
+    const dur = FRENZY.duration * p.buffTime;
+    p.frenzyT = Math.max(p.frenzyT, dur);
+    p.frenzyBuff = Math.max(1, p.buffPower);
+    p.frenzyDamage = 0;
+    this.events.push({ type: 'frenzy', x: p.pos.x, y: p.pos.y });
+    // 激励：周围的队友也获得同样的狂热（传递的增益效果一致）
+    if (this.hasSkillShape('frenzy', 'inspire', p)) {
+      for (const other of this.players) {
+        if (other === p || !other.alive) continue;
+        if (dist(other.pos, p.pos) > FRENZY.inspireRadius) continue;
+        other.frenzyT = Math.max(other.frenzyT, dur);
+        other.frenzyBuff = Math.max(other.frenzyBuff, p.buffPower);
+        other.frenzyDamage = 0;
+        this.events.push({ type: 'frenzy', x: other.pos.x, y: other.pos.y });
+      }
+    }
+  }
+
+  /** 狂热对「间隔 / 回复时间」的倍率（未激活时为 1） */
+  frenzyIntervalMult(p: Player): number {
+    if (p.frenzyT <= 0) return 1;
+    return Math.max(FRENZY.minMult, 1 - (1 - FRENZY.intervalMult) * p.frenzyBuff);
+  }
+
   /** 状态计时：面板打开时也会继续走 */
   tickStatus(dt: number): void {
     const p = this.player;
     for (let i = 0; i < p.skillCd.length; i++) p.skillCd[i] = Math.max(0, p.skillCd[i] - dt);
     if (p.stoneT > 0) p.stoneT = Math.max(0, p.stoneT - dt);
+    if (p.frenzyT > 0) {
+      p.frenzyT = Math.max(0, p.frenzyT - dt);
+      // 状态良好：狂热期间持续回血（增益效果）
+      if (p.hp > 0 && this.hasSkillShape('frenzy', 'healthy', p)) {
+        p.hp = Math.min(p.maxHp, p.hp + FRENZY.regen * dt);
+      }
+      if (p.frenzyT <= 0) p.frenzyBuff = 1;
+    }
     if (p.zoneBuffT > 0) {
       p.zoneBuffT = Math.max(0, p.zoneBuffT - dt);
       p.hp = Math.min(p.maxHp, p.hp + BLACKHOLE_SHAPE.buffRegen * dt);
@@ -634,7 +675,7 @@ export class World {
     }
 
     // 技能键
-    const slot = input.skillQ ? 0 : input.skillE ? 1 : input.skillF ? 2 : -1;
+    const slot = input.skillQ ? 0 : input.skillE ? 1 : input.skillF ? 2 : input.skillG ? 3 : -1;
     if (slot >= 0 && p.skillCd[slot] <= 0) {
       const id = p.skills[slot];
       if (id === 'blackhole') {
@@ -653,6 +694,11 @@ export class World {
         p.stoneT = STONE.duration;
         p.skillCd[slot] = SKILLS.stone.cd;
         this.events.push({ type: 'stone', x: p.pos.x, y: p.pos.y });
+        return true;
+      }
+      if (id === 'frenzy') {
+        this.startFrenzy(p);
+        p.skillCd[slot] = SKILLS.frenzy.cd;
         return true;
       }
     }
@@ -965,14 +1011,14 @@ export class World {
         targetZone: 0,
       });
     }
-    p.fireCd = w.fireInterval;
+    p.fireCd = w.fireInterval * this.frenzyIntervalMult(p);
     p.shotsFired += 1;
     p.ammo -= 1;
     p.charge = 0;
     if (p.ammo <= 0) {
       p.reloading = true;
-      p.reloadTotal = w.reload;
-      p.reloadT = w.reload;
+      p.reloadTotal = w.reload * this.frenzyIntervalMult(p);
+      p.reloadT = w.reload * this.frenzyIntervalMult(p);
     }
     this.events.push({ type: 'shoot', x: p.pos.x, y: p.pos.y, angle: p.aim });
   }
@@ -1636,6 +1682,15 @@ export class World {
         this.player.shield + dealt * STONE_SHAPE.siphonRate,
       );
     }
+    // 愈战愈勇：狂热期间对域兽造成的伤害累计到阈值，就提高狂热自身的增益加成（只作用自身）
+    const src = this.actor;
+    if (src && src.frenzyT > 0 && this.hasSkillShape('frenzy', 'momentum', src)) {
+      src.frenzyDamage += dealt;
+      while (src.frenzyDamage >= FRENZY.momentumThreshold) {
+        src.frenzyDamage -= FRENZY.momentumThreshold;
+        src.frenzyBuff = Math.min(1 + FRENZY.momentumMax, src.frenzyBuff + FRENZY.momentumStep);
+      }
+    }
     e.hitFlash = 1;
     /* 被打了就会记仇，短时间转向玩家 */
     this.player.totalDamage += amount;
@@ -1818,8 +1873,13 @@ export class World {
       // 这两个 map 必须各自一份：浅拷贝会让两个人共享购买记录
       shapes: {},
       skillShapes: {},
-      skillCd: [0, 0, 0],
+      skillCd: [0, 0, 0, 0],
       stoneT: 0,
+      frenzyT: 0,
+      frenzyBuff: 1,
+      frenzyDamage: 0,
+      buffPower: 1,
+      buffTime: 1,
       eggT: 0,
       shield: 0,
       shieldHp: SHIELD_WEAPON.durabilityMax,

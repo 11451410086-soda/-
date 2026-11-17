@@ -445,7 +445,68 @@ const input = {
   check("塑造：不能重复购买", w5.buySkillShape("blackhole", "slowfield") === false);
 }
 
-/* ============ 16. 身份注册表 ============ */
+/* ============ 17. 狂热（第 4 技能） ============ */
+{
+  const w = makeWorld();
+  w.player.skillCd[3] = 0;
+  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  check('狂热：开启后有持续时间', w.player.frenzyT > 0);
+  check('狂热：间隔倍率缩短', w.frenzyIntervalMult(w.player) < 0.7);
+  const cdAfter = w.player.skillCd[3];
+  check('狂热：进入冷却', cdAfter > 0);
+  // 时间走完恢复
+  w.player.frenzyT = 0.02;
+  w.tick([input, input], 0.05);
+  check('狂热：结束后倍率恢复', w.frenzyIntervalMult(w.player) === 1);
+}
+{
+  // 激励：队友也获得狂热
+  const w = makeWorld();
+  w.addPlayer('railgun');
+  w.player.coins = 500;
+  const prev = w.localIndex;
+  w.localIndex = 0;
+  w.buySkillShape('frenzy', 'inspire');
+  w.localIndex = prev;
+  w.player.skillCd[3] = 0;
+  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  check('激励：附近队友也进入狂热', w.players[1].frenzyT > 0);
+}
+{
+  // 状态良好：狂热期间回血
+  const w = makeWorld();
+  w.player.coins = 500;
+  w.player.hp = 100;
+  w.buySkillShape('frenzy', 'healthy');
+  w.player.skillCd[3] = 0;
+  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  const hp0 = w.player.hp;
+  for (let i = 0; i < 60; i++) w.tick([input, input], 1 / 120);
+  check('状态良好：狂热期间回血', w.player.hp > hp0);
+}
+{
+  // 愈战愈勇：伤害累计提高加成
+  const w = makeWorld();
+  w.player.coins = 500;
+  w.buySkillShape('frenzy', 'momentum');
+  w.player.skillCd[3] = 0;
+  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  const before = w.player.frenzyBuff;
+  w.spawnEnemy('puze', { x: 400, y: 150 });
+  const e = w.enemies[0];
+  e.hp = 99999;
+  // 用真实子弹造成伤害，actor 才会是玩家自己
+  for (let i = 0; i < 8; i++) {
+    w.player.pos = { x: 380, y: 150 };
+    w.player.aim = 0;
+    w.fireRail(0);
+    w.tick([{ ...input, firePressed: false }, input], 1 / 60);
+  }
+  check('愈战愈勇：伤害累计后加成提高', w.player.frenzyBuff > before);
+  check('愈战愈勇：加成有上限', w.player.frenzyBuff <= 1.91);
+}
+
+/* ============ 18. 身份注册表 ============ */
 {
   const attrs = Object.values(IDENTITIES).filter((d) => d.group === "attr");
   check("身份表：属性身份有 7 个", attrs.length === 7);

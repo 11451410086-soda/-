@@ -21,6 +21,8 @@ export function serializeWorld(w: World, events: unknown[] = [], guestSeq?: numb
       shieldAngle: p.shieldAngle,
       meteorT: p.meteorT,
       stoneT: p.stoneT,
+      frenzyT: p.frenzyT,
+      frenzyBuff: p.frenzyBuff,
       eggT: p.eggT,
       leapT: p.leapT,
       leapHangT: p.leapHangT,

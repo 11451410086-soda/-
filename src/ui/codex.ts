@@ -2,6 +2,7 @@ import {
   BLACKHOLE,
   BLACKHOLE_SHAPE,
   ENEMIES,
+  FRENZY,
   IMPACT,
   LEAP,
   LEAP_SHAPE,
@@ -165,6 +166,18 @@ const SKILL_ENTRIES: Entry[] = [
       ['容量', '1'],
     ],
   },
+  {
+    name: SKILLS.frenzy.name,
+    sub: '冷却 ' + SKILLS.frenzy.cd + ' 秒',
+    desc: '进入狂热：间隔与回复时间缩短，持续一段时间。',
+    attrs: tagsOf('frenzy'),
+    nums: [
+      ['增益加成', '间隔 / 回复 −' + Math.round((1 - FRENZY.intervalMult) * 100) + '%'],
+      ['增益时间', FRENZY.duration + ' 秒'],
+      ['冷却时间', SKILLS.frenzy.cd + ' 秒'],
+      ['容量', '1'],
+    ],
+  },
 ];
 
 function skillShapeEntries(): Entry[] {
@@ -208,6 +221,14 @@ function skillShapeEntries(): Entry[] {
     },
     eggshell: { attrs: ['生理控制', '增益效果'], nums: [['增益加成', '减伤 +' + Math.round(STONE_SHAPE.eggDR * 100) + '%']] },
     siphon: { attrs: ['增益效果'], nums: [['护盾值', '伤害的 ' + Math.round(STONE_SHAPE.siphonRate * 100) + '%']] },
+    inspire: { attrs: ['增益效果'], nums: [['增益加成', '传递同一份狂热']] },
+    healthy: { attrs: ['增益效果'], nums: [['生命回复', FRENZY.regen + ' / 秒']] },
+    momentum: {
+      attrs: ['增益效果'],
+      nums: [
+        ['增益加成', '每 ' + FRENZY.momentumThreshold + ' 伤害 +' + Math.round(FRENZY.momentumStep * 100) + '%（上限 +' + Math.round(FRENZY.momentumMax * 100) + '%）'],
+      ],
+    },
     impact: {
       attrs: ['近战击', '生理控制'],
       nums: [
@@ -312,7 +333,8 @@ function identityEntries(): Entry[] {
     attrs: [],
     nums: [
       ['伤害', '飞行物伤害 · 近战击伤害 · 范围区伤害'],
-      ['间隔', '飞行物间隔 · 近战击间隔 · 范围区间隔'],
+      ['间隔', '飞行物间隔 · 近战击间隔'],
+      ['范围区间隔', '范围区造成效果的时间间隔'],
       ['范围', '飞行物范围 · 近战击范围 · 范围区范围'],
       ['时间', '范围区时间'],
       ['控制', '控制时长'],

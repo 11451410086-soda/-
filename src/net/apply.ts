@@ -36,6 +36,8 @@ export function applySnapshot(world: World, wire: WorldWire): void {
     p.shieldAngle = pw.shieldAngle;
     p.meteorT = pw.meteorT;
     p.stoneT = pw.stoneT;
+    p.frenzyT = pw.frenzyT ?? 0;
+    p.frenzyBuff = pw.frenzyBuff ?? 1;
     p.eggT = pw.eggT;
     p.leapT = pw.leapT;
     p.leapHangT = pw.leapHangT;

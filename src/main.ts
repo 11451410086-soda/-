@@ -1,4 +1,4 @@
-import './style.css';import { RAIL_WEAPON, ROLL, SHIELD_WEAPON, SKILLS } from './content/defs';
+import './style.css';import { FRENZY, RAIL_WEAPON, ROLL, SHIELD_WEAPON, SKILLS } from './content/defs';
 import { VIEW } from './content/defs';
 import type { HeroId } from './content/defs';
 import { Camera, Renderer } from './render/renderer';
@@ -121,6 +121,7 @@ const edges = {
   q: false,
   e: false,
   f: false,
+  g: false,
   panel: false,
   skip: false,
   roll: false,
@@ -182,6 +183,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'q') edges.q = true;
   if (k === 'e') edges.e = true;
   if (k === 'f') edges.f = true;
+  if (k === 'g') edges.g = true;
   keys.add(k);
 });
 
@@ -237,6 +239,7 @@ function buildInput(consume: boolean): InputSnapshot {
     skillQ: edges.q,
     skillE: edges.e,
     skillF: edges.f,
+    skillG: edges.g,
     panel: edges.panel,
     skip: edges.skip,
   };
@@ -390,8 +393,8 @@ function renderPrep(): void {
 
   const list = document.getElementById('prep-skill-list');
   if (!list) return;
-  const order = ['blackhole', 'leap', 'stone'];
-  const keys = ['Q', 'E', 'F'];
+  const order = ['blackhole', 'leap', 'stone', 'frenzy'];
+  const keys = ['Q', 'E', 'F', 'G'];
   list.innerHTML = order
     .map((id, i) => {
       const d = SKILLS[id];
@@ -408,10 +411,14 @@ function renderPrep(): void {
               kv('近战击范围', '76') +
               kv('控制时长', '1.4 秒') +
               kv('冷却时间', d.cd + ' 秒')
-            : kv('增益加成', '减伤 +45%') +
-              kv('减益加成', '移速 −30%') +
-              kv('增益时间', '6 秒') +
-              kv('冷却时间', d.cd + ' 秒');
+            : id === 'stone'
+              ? kv('增益加成', '减伤 +45%') +
+                kv('减益加成', '移速 −30%') +
+                kv('增益时间', '6 秒') +
+                kv('冷却时间', d.cd + ' 秒')
+              : kv('增益加成', '间隔 −45%') +
+                kv('增益时间', FRENZY.duration + ' 秒') +
+                kv('冷却时间', d.cd + ' 秒');
       return (
         '<div class="prep-card">' +
         '<div class="prep-card-head"><b>' + d.name + '</b><span>' + keys[i] + '</span></div>' +
@@ -625,6 +632,7 @@ const EMPTY_INPUT: InputSnapshot = {
   skillQ: false,
   skillE: false,
   skillF: false,
+  skillG: false,
   panel: false,
   skip: false,
 };
@@ -638,6 +646,7 @@ function clearInputEdges(i: InputSnapshot): void {
   i.skillQ = false;
   i.skillE = false;
   i.skillF = false;
+  i.skillG = false;
   i.panel = false;
   i.skip = false;
 }
@@ -658,6 +667,7 @@ function mergeInput(prev: InputSnapshot | null, next: InputSnapshot): InputSnaps
   prev.skillQ = prev.skillQ || next.skillQ;
   prev.skillE = prev.skillE || next.skillE;
   prev.skillF = prev.skillF || next.skillF;
+  prev.skillG = !!prev.skillG || !!next.skillG;
   prev.panel = prev.panel || next.panel;
   prev.skip = prev.skip || next.skip;
   return prev;

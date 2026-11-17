@@ -24,6 +24,7 @@ const emptyInput = (): InputSnapshot => ({
   skillQ: false,
   skillE: false,
   skillF: false,
+  skillG: false,
   panel: false,
   skip: false,
 });
@@ -76,6 +77,7 @@ function tickRoom(room: Room): void {
       input.skillQ = false;
       input.skillE = false;
       input.skillF = false;
+      input.skillG = false;
       input.panel = false;
       input.skip = false;
     }
@@ -287,6 +289,7 @@ wss.on('connection', (ws, req) => {
       li.skillQ = li.skillQ || s.skillQ;
       li.skillE = li.skillE || s.skillE;
       li.skillF = li.skillF || s.skillF;
+      li.skillG = li.skillG || !!s.skillG;
       li.panel = li.panel || s.panel;
       li.skip = li.skip || s.skip;
     }

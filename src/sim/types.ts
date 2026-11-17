@@ -35,12 +35,22 @@ export interface Player {
   stamina: number;
   /** 翻滚无敌帧剩余 */
   rollIframe: number;
-  /** 已装配技能（Q/E/F 三个槽） */
+  /** 已装配技能（Q/E/F/G 四个槽） */
   skills: string[];
-  /** Q/E/F 冷却 */
+  /** Q/E/F/G 冷却 */
   skillCd: number[];
   /** 磐石护体剩余时间 */
   stoneT: number;
+  /** 狂热剩余时间（增益时长） */
+  frenzyT: number;
+  /** 狂热的增益加成倍率（1 = 基础，愈战愈勇会往上叠） */
+  frenzyBuff: number;
+  /** 狂热期间累计造成的伤害（愈战愈勇用） */
+  frenzyDamage: number;
+  /** 增益加成（所有增益效果的强度倍率） */
+  buffPower: number;
+  /** 增益时间（所有增益效果的时长倍率） */
+  buffTime: number;
   /** 技能塑造：key = `${skillId}.${shapeId}` */
   skillShapes: Record<string, boolean>;
   /** 引力超标：站在引力范围内的剩余刷新时间 */
@@ -261,6 +271,7 @@ export type WorldEvent =
   | { type: 'dodge'; x: number; y: number }
   | { type: 'roll'; x: number; y: number }
   | { type: 'stone'; x: number; y: number }
+  | { type: 'frenzy'; x: number; y: number }
   | { type: 'egg'; x: number; y: number }
   | { type: 'shieldRestore'; x: number; y: number }
   | { type: 'chain'; x: number; y: number; x2: number; y2: number }

@@ -309,6 +309,16 @@ export class Renderer {
           }
           break;
         }
+        case 'frenzy': {
+          // 狂热开启：橙色外扩光环 + 上浮粒子
+          this.addRing(ev.x, ev.y, 6, 34, 0.32, 'rgba(255,176,90,0.95)', 2);
+          this.addRing(ev.x, ev.y, 2, 18, 0.24, 'rgba(255,230,180,0.8)', 1);
+          for (let i = 0; i < 10; i++) {
+            const a = (i / 10) * Math.PI * 2;
+            this.addParticle(ev.x + Math.cos(a) * 10, ev.y + Math.sin(a) * 10, Math.cos(a) * 40, Math.sin(a) * 40 - 30, 0.5, 2, ORANGE, true);
+          }
+          break;
+        }
         case 'stoneImpact': {
           this.addRing(ev.x, ev.y, 3, 18, 0.22, 'rgba(255,196,110,0.9)', 1);
           break;
