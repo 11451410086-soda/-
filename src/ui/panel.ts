@@ -52,6 +52,9 @@ const SKILL_SHAPE_STATS: Record<string, [string, string][]> = {
   ],
   eggshell: [['增益加成', '减伤 +85%']],
   siphon: [['护盾值', '伤害的 25%']],
+  inspire: [['增益加成', '传给附近队友']],
+  healthy: [['生命回复', '7 / 秒']],
+  momentum: [['增益加成', '每 60 伤害 +15%（上限 +90%）']],
 };
 
 interface ShapeUI {
@@ -72,6 +75,7 @@ export class GrowthPanel {
   private shapeCards = new Map<string, ShapeUI>();
   private shapeDefs: ShapeDef[] = [];
   private builtWeapon = '';
+  private builtSkills = '';
   private skillShapeList = document.getElementById('skill-shape-list') as HTMLElement;
   private skillShapeCoins = document.getElementById('skill-shape-coins') as HTMLElement;
   private shapeTitle = document.getElementById('shape-title') as HTMLElement;
@@ -96,10 +100,13 @@ export class GrowthPanel {
 
   open(world: World): void {
     this.world = world;
-    if (this.built && this.builtWeapon !== world.player.weaponId) {
+    // 换武器或换技能装配都要重建列表
+    const skillSig = world.player.skills.join(',');
+    if (this.built && (this.builtWeapon !== world.player.weaponId || this.builtSkills !== skillSig)) {
       this.built = false;
     }
     this.builtWeapon = world.player.weaponId;
+    this.builtSkills = skillSig;
     this.shapeTitle.textContent = world.weaponName();
     if (!this.built) this.build();
     this.root.classList.remove('hidden');
@@ -161,7 +168,9 @@ export class GrowthPanel {
   private buildSkillShapes(): void {
     this.skillShapeList.innerHTML = '';
     this.skillShapeCards.clear();
-    const order = ['blackhole', 'leap', 'stone'];
+    // 只列当前装配的 3 个技能（装配顺序 = Q/E/F）
+    const owned = this.world?.player.skills ?? [];
+    const order = (owned.length ? owned : ['blackhole', 'leap', 'stone']).filter(Boolean);
     for (const skillId of order) {
       const defs = SKILL_SHAPES[skillId] ?? [];
       if (defs.length === 0) continue;
