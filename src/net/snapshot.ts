@@ -41,6 +41,7 @@ export function serializeWorld(w: World, events: unknown[] = [], guestSeq?: numb
       rollDx: p.rollDir.x,
       rollDy: p.rollDir.y,
       skillCd: p.skillCd.slice(),
+      skills: p.skills.slice(),
       mode: p.mode,
       throwTarget: p.throwTarget ? { x: p.throwTarget.x, y: p.throwTarget.y } : null,
       aiming: p.aiming,

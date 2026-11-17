@@ -21,6 +21,15 @@ function check(name: string, cond: boolean, extra = ''): void {
   }
 }
 
+function makeFrenzyWorld(): World {
+  const w = new World('guard', 'railgun', ['frenzy', 'leap', 'stone']);
+  w.player.pos = { x: 400, y: 150 };
+  w.player.aim = 0;
+  w.enemies.length = 0;
+  w.lasers.length = 0;
+  return w;
+}
+
 function makeWorld(): World {
   const w = new World();
   w.player.pos = { x: 400, y: 150 };
@@ -447,12 +456,12 @@ const input = {
 
 /* ============ 17. 狂热（第 4 技能） ============ */
 {
-  const w = makeWorld();
-  w.player.skillCd[3] = 0;
-  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  const w = makeFrenzyWorld();
+  w.player.skillCd[0] = 0;
+  w.tick([{ ...input, skillQ: true }, input], 1 / 120);
   check('狂热：开启后有持续时间', w.player.frenzyT > 0);
   check('狂热：间隔倍率缩短', w.frenzyIntervalMult(w.player) < 0.7);
-  const cdAfter = w.player.skillCd[3];
+  const cdAfter = w.player.skillCd[0];
   check('狂热：进入冷却', cdAfter > 0);
   // 时间走完恢复
   w.player.frenzyT = 0.02;
@@ -461,36 +470,36 @@ const input = {
 }
 {
   // 激励：队友也获得狂热
-  const w = makeWorld();
+  const w = makeFrenzyWorld();
   w.addPlayer('railgun');
   w.player.coins = 500;
   const prev = w.localIndex;
   w.localIndex = 0;
   w.buySkillShape('frenzy', 'inspire');
   w.localIndex = prev;
-  w.player.skillCd[3] = 0;
-  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  w.player.skillCd[0] = 0;
+  w.tick([{ ...input, skillQ: true }, input], 1 / 120);
   check('激励：附近队友也进入狂热', w.players[1].frenzyT > 0);
 }
 {
   // 状态良好：狂热期间回血
-  const w = makeWorld();
+  const w = makeFrenzyWorld();
   w.player.coins = 500;
   w.player.hp = 100;
   w.buySkillShape('frenzy', 'healthy');
-  w.player.skillCd[3] = 0;
-  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  w.player.skillCd[0] = 0;
+  w.tick([{ ...input, skillQ: true }, input], 1 / 120);
   const hp0 = w.player.hp;
   for (let i = 0; i < 60; i++) w.tick([input, input], 1 / 120);
   check('状态良好：狂热期间回血', w.player.hp > hp0);
 }
 {
   // 愈战愈勇：伤害累计提高加成
-  const w = makeWorld();
+  const w = makeFrenzyWorld();
   w.player.coins = 500;
   w.buySkillShape('frenzy', 'momentum');
-  w.player.skillCd[3] = 0;
-  w.tick([{ ...input, skillG: true }, input], 1 / 120);
+  w.player.skillCd[0] = 0;
+  w.tick([{ ...input, skillQ: true }, input], 1 / 120);
   const before = w.player.frenzyBuff;
   w.spawnEnemy('puze', { x: 400, y: 150 });
   const e = w.enemies[0];
@@ -516,6 +525,20 @@ const input = {
 
   const badAttrs = validateAbilityIdentities();
   check("身份表：事物引用的属性身份都存在", badAttrs.length === 0);
+}
+
+/* ============ 19. 技能携带（最多 3 个） ============ */
+{
+  const def = makeWorld();
+  check('技能：默认带 3 个', def.player.skills.length === 3);
+  check('技能：默认是 黑洞/陨落/磐石', def.player.skills.join(',') === 'blackhole,leap,stone');
+  const w = makeFrenzyWorld();
+  check('技能：可自定义装配顺序', w.player.skills[0] === 'frenzy' && w.player.skills.length === 3);
+  check('技能：冷却槽跟着 3 个', w.player.skillCd.length === 3);
+  const over = new World('guard', 'railgun', ['blackhole', 'leap', 'stone', 'frenzy']);
+  check('技能：超过 3 个会被截断', over.player.skills.length === 3);
+  const two = new World('guard', 'railgun', ['frenzy', 'blackhole']);
+  check('技能：不足 3 个也能开局', two.player.skills.length === 2);
 }
 
 /* ============ 结果 ============ */

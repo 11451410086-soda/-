@@ -126,8 +126,11 @@
   - 切换：改 `.github/workflows/pages.yml` 里的 `VITE_SIGNAL_URL`，或临时用 `?signal=wss://xxx.workers.dev` 验证。
 - 客户端信令地址优先级：`?signal=` > 构建注入 `VITE_SIGNAL_URL` > 同源（本地开发连 3001）。
 
-### J. 狂热（第 4 技能）
-- **技能**：`frenzy`（G 键），自身进入狂热：飞行物/近战击间隔与回复时间缩短（增益加成），持续一段时间（增益时间）。
+### J. 狂热（第 4 个技能）与技能携带
+- **技能携带**：上限 3 个，选武器界面点卡片选/取消（满了再点新的会换掉最早选的那个），按选择顺序进 Q / E / F 槽，选完记在 `localStorage.dsh.skills`。
+  - 世界构造：`new World(hero, weapon, skills)` / `addPlayer(weapon, skills)`，内部 `skills.slice(0, 3)`。
+  - 联机：大厅消息带 `skills`，房主开局用客人的装配；快照也带 `skills`，客人 HUD 名称一致。
+- **技能**：`frenzy`，自身进入狂热：飞行物/近战击间隔与回复时间缩短（增益加成），持续一段时间（增益时间）。
 - **参数**：`FRENZY`（`content/defs.ts`）：时长 5 秒、间隔 ×0.55（下限 ×0.35）、冷却 22 秒。
 - **玩家状态**：`frenzyT / frenzyBuff / frenzyDamage`，另加通用 `buffPower / buffTime`（增益加成 / 增益时间的来源倍率）。
 - **塑造**：

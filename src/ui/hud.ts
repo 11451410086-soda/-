@@ -33,11 +33,6 @@ export class Hud {
   private skillF = el('skill-f');
   private skillFName = el('skill-f-name');
   private cdF = el('cd-f');
-  private skillG = el('skill-g');
-  private skillGName = el('skill-g-name');
-  private cdG = el('cd-g');
-  private cdGText = document.createElement('span');
-  private gTextReady = false;
   private cdFText = document.createElement('span');
   private fTextReady = false;
   private tip = document.getElementById('skill-tip') as HTMLElement;
@@ -98,7 +93,6 @@ export class Hud {
     bind(this.skillQ, 'blackhole');
     bind(this.skillE, 'leap');
     bind(this.skillF, 'stone');
-    bind(this.skillG, 'frenzy');
     window.addEventListener('click', () => {
       this.tip.classList.add('hidden');
       this.tipSkill = '';
@@ -222,11 +216,6 @@ export class Hud {
       this.skillF.appendChild(this.cdFText);
       this.fTextReady = true;
     }
-    if (!this.gTextReady) {
-      this.cdGText.className = 'skill-cd-text';
-      this.skillG.appendChild(this.cdGText);
-      this.gTextReady = true;
-    }
     const p = world.player;
 
     if (this.heroShown !== world.heroId) {
@@ -236,11 +225,10 @@ export class Hud {
       this.skillQ.style.display = 'flex';
       this.skillE.style.display = 'flex';
       this.skillF.style.display = 'flex';
-      this.skillG.style.display = 'flex';
-      this.skillQName.textContent = '黑洞雷';
-      this.skillEName.textContent = '陨落';
-      this.skillFName.textContent = '磐石护体';
-      this.skillGName.textContent = '狂热';
+      const names = p.skills.map((id) => SKILLS[id]?.name ?? id);
+      this.skillQName.textContent = names[0] ?? '—';
+      this.skillEName.textContent = names[1] ?? '—';
+      this.skillFName.textContent = names[2] ?? '—';
       this.skillRmb.style.display = 'none';
       this.formLine.style.display = 'none';
       this.ammoEl.style.display = world.player.weaponId === 'shield' ? 'none' : 'flex';
@@ -330,7 +318,6 @@ export class Hud {
     setCard(this.skillQ, this.cdQ, this.cdQText, 0);
     setCard(this.skillE, this.cdE, this.cdEText, 1);
     setCard(this.skillF, this.cdF, this.cdFText, 2);
-    setCard(this.skillG, this.cdG, this.cdGText, 3);
 
     // 中央提示
     let msg = '';

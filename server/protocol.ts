@@ -80,6 +80,8 @@ export interface PlayerWire {
   alive: boolean;
   coins: number;
   skillCd: number[];
+  /** 出战技能（3 个，Q/E/F 槽） */
+  skills?: string[];
   /** 受击红屏 / 无敌闪烁：客人端也要有 */
   hurtFlash?: number;
   invuln?: number;

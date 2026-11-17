@@ -349,6 +349,28 @@ function kv(label: string, value: string): string {
 
 let selectedWeapon: 'railgun' | 'shield' = 'railgun';
 
+/** 出战技能：最多 3 个，按顺序进 Q/E/F 槽 */
+const ALL_SKILLS = ['blackhole', 'leap', 'stone', 'frenzy'];
+let selectedSkills: string[] = (() => {
+  try {
+    const raw = localStorage.getItem('dsh.skills');
+    if (!raw) return ['blackhole', 'leap', 'stone'];
+    const arr = JSON.parse(raw) as string[];
+    const ok = arr.filter((id) => ALL_SKILLS.includes(id));
+    return ok.length === 3 ? ok : ['blackhole', 'leap', 'stone'];
+  } catch {
+    return ['blackhole', 'leap', 'stone'];
+  }
+})();
+
+function saveSkills(): void {
+  try {
+    localStorage.setItem('dsh.skills', JSON.stringify(selectedSkills));
+  } catch {
+    /* 隐私模式忽略 */
+  }
+}
+
 function renderPrep(): void {
   const weaponBox = document.getElementById('prep-weapon');
   if (weaponBox) {
@@ -393,47 +415,65 @@ function renderPrep(): void {
 
   const list = document.getElementById('prep-skill-list');
   if (!list) return;
-  const order = ['blackhole', 'leap', 'stone', 'frenzy'];
-  const keys = ['Q', 'E', 'F', 'G'];
-  list.innerHTML = order
-    .map((id, i) => {
-      const d = SKILLS[id];
-      const desc = d.desc.replace(/\[\[(.+?)\]\]/g, '<span class="tip-tag">$1</span>');
-      const detail =
-        id === 'blackhole'
-          ? kv('范围区伤害', '8 / 次') +
-            kv('范围区范围', '66') +
-            kv('范围区时间', '3 秒') +
-            kv('控制时长', '0.12 秒') +
+  const slotKeys = ['Q', 'E', 'F'];
+  list.innerHTML = ALL_SKILLS.map((id) => {
+    const d = SKILLS[id];
+    const slot = selectedSkills.indexOf(id);
+    const picked = slot >= 0;
+    const desc = d.desc.replace(/\[\[(.+?)\]\]/g, '<span class="tip-tag">$1</span>');
+    const detail =
+      id === 'blackhole'
+        ? kv('范围区伤害', '8 / 次') +
+          kv('范围区范围', '66') +
+          kv('范围区时间', '3 秒') +
+          kv('控制时长', '0.12 秒') +
+          kv('冷却时间', d.cd + ' 秒')
+        : id === 'leap'
+          ? kv('近战击伤害', '26') +
+            kv('近战击范围', '76') +
+            kv('控制时长', '1.4 秒') +
             kv('冷却时间', d.cd + ' 秒')
-          : id === 'leap'
-            ? kv('近战击伤害', '26') +
-              kv('近战击范围', '76') +
-              kv('控制时长', '1.4 秒') +
+          : id === 'stone'
+            ? kv('增益加成', '减伤 +45%') +
+              kv('减益加成', '移速 −30%') +
+              kv('增益时间', '6 秒') +
               kv('冷却时间', d.cd + ' 秒')
-            : id === 'stone'
-              ? kv('增益加成', '减伤 +45%') +
-                kv('减益加成', '移速 −30%') +
-                kv('增益时间', '6 秒') +
-                kv('冷却时间', d.cd + ' 秒')
-              : kv('增益加成', '间隔 −45%') +
-                kv('增益时间', FRENZY.duration + ' 秒') +
-                kv('冷却时间', d.cd + ' 秒');
-      return (
-        '<div class="prep-card">' +
-        '<div class="prep-card-head"><b>' + d.name + '</b><span>' + keys[i] + '</span></div>' +
-        '<p class="prep-desc">' + desc + '</p>' +
-        '<div class="prep-detail">' + detail + '<div class="prep-tags"><i>技能</i></div></div>' +
-        '</div>'
-      );
-    })
-    .join('');
+            : kv('增益加成', '间隔 −45%') +
+              kv('增益时间', FRENZY.duration + ' 秒') +
+              kv('冷却时间', d.cd + ' 秒');
+    return (
+      '<div class="prep-card skill-pick' + (picked ? ' picked' : '') + '" data-s="' + id + '">' +
+      '<div class="prep-card-head"><b>' + d.name + '</b><span>' +
+      (picked ? slotKeys[slot] : '未装配') +
+      '</span></div>' +
+      '<p class="prep-desc">' + desc + '</p>' +
+      '<div class="prep-detail">' + detail + '<div class="prep-tags"><i>技能</i></div></div>' +
+      '</div>'
+    );
+  }).join('');
+
+  // 点选：最多 3 个；满了再点新的，换掉最早选的那个
+  list.querySelectorAll('.prep-card.skill-pick').forEach((el) => {
+    el.addEventListener('click', () => {
+      const id = (el as HTMLElement).dataset.s!;
+      const idx = selectedSkills.indexOf(id);
+      if (idx >= 0) {
+        // 至少留一个
+        if (selectedSkills.length > 1) selectedSkills.splice(idx, 1);
+      } else {
+        if (selectedSkills.length >= 3) selectedSkills.shift();
+        selectedSkills.push(id);
+      }
+      saveSkills();
+      renderPrep();
+    });
+  });
 }
 
 renderPrep();
 
 function startGame(heroId: HeroId = 'guard'): void {
-  world = new World(BOT ? 'guard' : heroId, selectedWeapon);
+  world = new World(BOT ? 'guard' : heroId, selectedWeapon, selectedSkills);
   ended = false;
   panelWasOpen = false;
   panelSig = '';
@@ -744,10 +784,11 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
           snap?: InputSnapshot;
           ready?: boolean;
           weapon?: string;
+          skills?: string[];
           cx?: number;
           cy?: number;
           phase?: string;
-          host?: { ready?: boolean; weapon?: string; cx?: number; cy?: number } | null;
+          host?: { ready?: boolean; weapon?: string; skills?: string[]; cx?: number; cy?: number } | null;
           panel?: boolean;
           kind?: string;
           id?: string;
@@ -784,6 +825,7 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
               lobbyPeer = {
                 ready: msg.ready,
                 weapon: msg.weapon === 'shield' ? 'shield' : 'railgun',
+                skills: Array.isArray(msg.skills) ? (msg.skills as string[]).slice(0, 3) : undefined,
                 cx: typeof msg.cx === 'number' ? msg.cx : 0.5,
                 cy: typeof msg.cy === 'number' ? msg.cy : 0.5,
               };
@@ -853,8 +895,9 @@ function startP2P(room: string, role: 'host' | 'guest'): void {
 let lobbyActive = false;
 let lobbyPhase: LobbyPhase = 'ready';
 let lobbyStartAt: number | null = null;
-let lobbySelf: { ready: boolean; weapon: LobbyWeapon; cx: number; cy: number } | null = null;
-let lobbyPeer: { ready: boolean; weapon: LobbyWeapon; cx: number; cy: number } | null = null;
+type LobbyPlayer = { ready: boolean; weapon: LobbyWeapon; cx: number; cy: number; skills?: string[] };
+let lobbySelf: LobbyPlayer | null = null;
+let lobbyPeer: LobbyPlayer | null = null;
 let lobbyRemoteHost: {
   ready?: boolean;
   weapon?: string;
@@ -863,6 +906,8 @@ let lobbyRemoteHost: {
 } | null = null;
 let lobbyAcc = 0;
 let guestWeapon: LobbyWeapon = 'railgun';
+/** 客人的出战技能（由大厅消息带过来） */
+let guestSkills: string[] = ['blackhole', 'leap', 'stone'];
 let panelSent: boolean | null = null;
 
 const coop = new CoopLobby({
@@ -925,7 +970,7 @@ function enterCoopLobby(): void {
   lobbyPhase = 'ready';
   lobbyStartAt = null;
   lobbyAcc = 0;
-  lobbySelf = { ready: false, weapon: selectedWeapon, cx: 0.5, cy: 0.5 };
+  lobbySelf = { ready: false, weapon: selectedWeapon, cx: 0.5, cy: 0.5, skills: selectedSkills };
   lobbyPeer = null;
   lobbyRemoteHost = null;
   panelSent = null;
@@ -997,6 +1042,7 @@ function updateCoopLobby(dt: number): void {
       phase: lobbyPhase,
       ready: lobbySelf.ready,
       weapon: lobbySelf.weapon,
+      skills: selectedSkills,
       cx: lobbySelf.cx,
       cy: lobbySelf.cy,
     });
@@ -1038,6 +1084,7 @@ function advanceCoop(): void {
 function startCoopGame(): void {
   if (!lobbySelf) return;
   guestWeapon = lobbyPeer?.weapon === 'shield' ? 'shield' : 'railgun';
+  if (lobbyPeer?.skills && lobbyPeer.skills.length === 3) guestSkills = lobbyPeer.skills;
   selectedWeapon = lobbySelf.weapon;
   lobbyActive = false;
   lobbyStartAt = null;
@@ -1063,7 +1110,7 @@ document.addEventListener('visibilitychange', () => {
 /** 房主世界里给客人留一个玩家位（联机前不占位） */
 function ensureHostPlayers(): void {
   if (!world || p2pRole !== 'host') return;
-  while (world.players.length < 2) world.addPlayer(guestWeapon);
+  while (world.players.length < 2) world.addPlayer(guestWeapon, guestSkills);
 }
 
 /** 客人收到第一帧快照：以房主世界为准，本地只做插值渲染 */

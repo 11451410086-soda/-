@@ -88,7 +88,11 @@ export class World {
   nextId = 1;
   totalKills = 0;
 
-  constructor(heroId: HeroId = 'guard', weaponId: 'railgun' | 'shield' = 'railgun') {
+  constructor(
+    heroId: HeroId = 'guard',
+    weaponId: 'railgun' | 'shield' = 'railgun',
+    skillIds: string[] = ['blackhole', 'leap', 'stone'],
+  ) {
     this.heroId = heroId;
     this.hero = HERO_PROFILES[heroId];
     this.players.push({
@@ -119,8 +123,8 @@ export class World {
       rollDir: { x: 0, y: 0 },
       stamina: HERO_PROFILES.guard.maxStamina,
       rollIframe: 0,
-      skills: ['blackhole', 'leap', 'stone', 'frenzy'],
-      skillCd: [0, 0, 0, 0],
+      skills: skillIds.slice(0, 3),
+      skillCd: [0, 0, 0],
       stoneT: 0,
       frenzyT: 0,
       frenzyBuff: 1,
@@ -675,7 +679,7 @@ export class World {
     }
 
     // 技能键
-    const slot = input.skillQ ? 0 : input.skillE ? 1 : input.skillF ? 2 : input.skillG ? 3 : -1;
+    const slot = input.skillQ ? 0 : input.skillE ? 1 : input.skillF ? 2 : -1;
     if (slot >= 0 && p.skillCd[slot] <= 0) {
       const id = p.skills[slot];
       if (id === 'blackhole') {
@@ -1859,7 +1863,7 @@ export class World {
   }
 
   /** 联机：加入一名新玩家 */
-  addPlayer(weaponId: 'railgun' | 'shield'): Player {
+  addPlayer(weaponId: 'railgun' | 'shield', skillIds: string[] = ['blackhole', 'leap', 'stone']): Player {
     const src = this.players[0];
     const clone: Player = {
       ...src,
@@ -1873,7 +1877,8 @@ export class World {
       // 这两个 map 必须各自一份：浅拷贝会让两个人共享购买记录
       shapes: {},
       skillShapes: {},
-      skillCd: [0, 0, 0, 0],
+      skills: skillIds.slice(0, 3),
+      skillCd: [0, 0, 0],
       stoneT: 0,
       frenzyT: 0,
       frenzyBuff: 1,
