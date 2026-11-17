@@ -2094,3 +2094,18 @@ body {
 .prep-card.dragging {
   opacity: 0.4;
 }
+
+/* 选武器界面：内容变高后要能滚动，否则小屏看不到「出发」 */
+#prep.screen {
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: 18px 0 40px;
+}
+
+#prep .prep-skills {
+  margin-top: 16px;
+}
+
+#prep .prep-actions {
+  margin-top: 18px;
+}

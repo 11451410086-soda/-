@@ -937,6 +937,38 @@ export class Renderer {
     ctx.drawImage(pg, p.pos.x - 20, p.pos.y - 22);
     ctx.restore();
 
+    // 狂热：身上冒红色光晕（脉冲呼吸 + 外环 + 环绕火星）
+    if (p.frenzyT > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(t * 9);
+      const sc = 1 + 0.14 * pulse;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const fg = S.glowTex("rgba(255,58,58,0.38)", 30);
+      ctx.globalAlpha = 0.55 + 0.3 * pulse;
+      ctx.drawImage(fg, p.pos.x - 30 * sc, p.pos.y - 33 * sc, 60 * sc, 66 * sc);
+      ctx.restore();
+
+      ctx.globalAlpha = 0.5 + 0.3 * pulse;
+      ctx.strokeStyle = "rgba(255,86,86,0.9)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y - 2, 17 + Math.sin(t * 9) * 1.6, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 6; i++) {
+        const a = t * 3.2 + (i / 6) * Math.PI * 2;
+        const rr = 16 + Math.sin(t * 6 + i) * 2.5;
+        ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(t * 7 + i));
+        ctx.fillStyle = "#ff6a5a";
+        ctx.beginPath();
+        ctx.arc(p.pos.x + Math.cos(a) * rr, p.pos.y - 4 + Math.sin(a) * rr * 0.55, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+    }
+
     ctx.drawImage(spr.img, p.pos.x - spr.w / 2, p.pos.y + 5 - spr.h - lift);
     if (lift > 1) {
       ctx.globalAlpha = 0.25;
