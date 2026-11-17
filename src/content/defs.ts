@@ -213,8 +213,17 @@ export function waveSpeedScale(n: number): number {
 export const KILLS_PER_POINT = 8;
 export const POINTS_PER_WAVE = 2;
 
-export const COIN_PER_KILL = 2;
-export const COIN_PER_WAVE = 10;
+export const COIN_PER_KILL = 3;
+export const COIN_PER_WAVE = 8;
+/** 波次奖励随波数增长：第 n 波 = COIN_PER_WAVE + n * COIN_WAVE_STEP */
+export const COIN_WAVE_STEP = 6;
+/** 开局携带的域币，让第一件塑造来得早一点 */
+export const START_COINS = 40;
+
+/** 第 n 波清完给多少域币 */
+export function coinWaveBonus(n: number): number {
+  return COIN_PER_WAVE + n * COIN_WAVE_STEP;
+}
 
 /* ---------------- 武器 ---------------- */
 

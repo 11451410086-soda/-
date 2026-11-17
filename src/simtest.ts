@@ -2,7 +2,7 @@
  * 模拟层自检：不依赖渲染，直接在浏览器里跑。
  * 打开 http://127.0.0.1:5173/test.html 看结果。
  */
-import { COIN_PER_KILL, RAIL_WEAPON } from './content/defs';
+import { COIN_PER_KILL, RAIL_WEAPON, START_COINS } from './content/defs';
 import { IDENTITIES, validateAbilityIdentities, validateIdentities } from './content/identities';
 import { World } from './sim/world';
 
@@ -120,7 +120,7 @@ const input = {
   const ehp = e.hp;
   w.damageEnemy(e, 999);
   check('击杀：累计击杀数', w.player.killCount === 1 && ehp > 0);
-  check('击杀：获得域币', w.player.coins === COIN_PER_KILL);
+  check('击杀：获得域币', w.player.coins === START_COINS + COIN_PER_KILL);
 }
 
 /* ============ 6. 波次 ============ */

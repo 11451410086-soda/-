@@ -8,6 +8,8 @@ import {
   POINTS_PER_WAVE,
   COIN_PER_KILL,
   COIN_PER_WAVE,
+  START_COINS,
+  coinWaveBonus,
   SKILLS,
   BLACKHOLE,
   LEAP,
@@ -109,7 +111,7 @@ export class World {
       throwTarget: null,
       panelOpen: false,
       points: 0,
-      coins: 0,
+      coins: START_COINS,
       shapes: {},
       aiming: false,
       rollT: 0,
@@ -1774,7 +1776,7 @@ export class World {
     // 联机：波次奖励是团队奖励，两个人都拿
     for (const p of this.players) {
       p.points += POINTS_PER_WAVE;
-      p.coins += COIN_PER_WAVE;
+      p.coins += coinWaveBonus(w.n);
     }
     this.events.push({ type: 'waveClear', n: w.n });
     // 无尽模式：没有通关，只有能撑多久
@@ -1836,7 +1838,7 @@ export class World {
       panelOpen: false,
       invuln: 0,
       hurtFlash: 0,
-      coins: 0,
+      coins: START_COINS,
       points: 0,
       respawnT: 0,
     };
