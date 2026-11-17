@@ -2011,3 +2011,86 @@ body {
 .prep-card.skill-pick.picked .prep-card-head span {
   color: #7fd8ff;
 }
+
+/* 技能槽位 + 技能池（拖拽装配） */
+.prep-skill-row {
+  display: block;
+  max-width: 1080px;
+}
+
+.skill-slots {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.skill-slot {
+  position: relative;
+  display: flex;
+  padding: 12px;
+  border: 1px dashed rgba(95, 215, 255, 0.25);
+  border-radius: 10px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.skill-slot.active-slot {
+  border-color: rgba(95, 215, 255, 0.8);
+  background: rgba(95, 215, 255, 0.05);
+}
+
+.skill-slot.drop-hover {
+  border-color: rgba(127, 216, 255, 0.95);
+  background: rgba(95, 215, 255, 0.09);
+}
+
+.skill-slot-key {
+  position: absolute;
+  top: -9px;
+  left: 12px;
+  padding: 0 6px;
+  background: #0a1422;
+  color: #7fd8ff;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.skill-slot .prep-card {
+  flex: 1;
+  max-width: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.skill-pool {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(95, 215, 255, 0.14);
+}
+
+.skill-pool .prep-card {
+  max-width: none;
+  opacity: 0.75;
+}
+
+.skill-pool .prep-card:hover {
+  opacity: 1;
+}
+
+.skill-pool-empty {
+  grid-column: 1 / -1;
+  padding: 16px;
+  border: 1px dashed rgba(95, 215, 255, 0.18);
+  border-radius: 8px;
+  color: #6f8ba6;
+  font-size: 12px;
+  text-align: center;
+}
+
+.prep-card.dragging {
+  opacity: 0.4;
+}

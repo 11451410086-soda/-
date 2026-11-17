@@ -413,61 +413,156 @@ function renderPrep(): void {
     });
   }
 
+  renderSkillPicker();
+}
+
+/** 当前选中的槽位（点选时用；默认 Q） */
+let activeSlot = 0;
+
+function skillDetail(id: string): string {
+  const d = SKILLS[id];
+  if (id === 'blackhole') {
+    return (
+      kv('范围区伤害', '8 / 次') +
+      kv('范围区范围', '66') +
+      kv('范围区时间', '3 秒') +
+      kv('控制时长', '0.12 秒') +
+      kv('冷却时间', d.cd + ' 秒')
+    );
+  }
+  if (id === 'leap') {
+    return (
+      kv('近战击伤害', '26') +
+      kv('近战击范围', '76') +
+      kv('控制时长', '1.4 秒') +
+      kv('冷却时间', d.cd + ' 秒')
+    );
+  }
+  if (id === 'stone') {
+    return (
+      kv('增益加成', '减伤 +45%') +
+      kv('减益加成', '移速 −30%') +
+      kv('增益时间', '6 秒') +
+      kv('冷却时间', d.cd + ' 秒')
+    );
+  }
+  return (
+    kv('增益加成', '间隔 −45%') +
+    kv('增益时间', FRENZY.duration + ' 秒') +
+    kv('冷却时间', d.cd + ' 秒')
+  );
+}
+
+function skillCardHtml(id: string, extraClass: string, badge: string): string {
+  const d = SKILLS[id];
+  const desc = d.desc.replace(/\[\[(.+?)\]\]/g, '<span class="tip-tag">$1</span>');
+  return (
+    '<div class="prep-card skill-pick ' + extraClass + '" draggable="true" data-s="' + id + '">' +
+    '<div class="prep-card-head"><b>' + d.name + '</b><span>' + badge + '</span></div>' +
+    '<p class="prep-desc">' + desc + '</p>' +
+    '<div class="prep-detail">' + skillDetail(id) + '<div class="prep-tags"><i>技能</i></div></div>' +
+    '</div>'
+  );
+}
+
+/** Q/E/F 固定三槽 + 下方技能池，支持拖拽替换 */
+function renderSkillPicker(): void {
   const list = document.getElementById('prep-skill-list');
   if (!list) return;
   const slotKeys = ['Q', 'E', 'F'];
-  list.innerHTML = ALL_SKILLS.map((id) => {
-    const d = SKILLS[id];
-    const slot = selectedSkills.indexOf(id);
-    const picked = slot >= 0;
-    const desc = d.desc.replace(/\[\[(.+?)\]\]/g, '<span class="tip-tag">$1</span>');
-    const detail =
-      id === 'blackhole'
-        ? kv('范围区伤害', '8 / 次') +
-          kv('范围区范围', '66') +
-          kv('范围区时间', '3 秒') +
-          kv('控制时长', '0.12 秒') +
-          kv('冷却时间', d.cd + ' 秒')
-        : id === 'leap'
-          ? kv('近战击伤害', '26') +
-            kv('近战击范围', '76') +
-            kv('控制时长', '1.4 秒') +
-            kv('冷却时间', d.cd + ' 秒')
-          : id === 'stone'
-            ? kv('增益加成', '减伤 +45%') +
-              kv('减益加成', '移速 −30%') +
-              kv('增益时间', '6 秒') +
-              kv('冷却时间', d.cd + ' 秒')
-            : kv('增益加成', '间隔 −45%') +
-              kv('增益时间', FRENZY.duration + ' 秒') +
-              kv('冷却时间', d.cd + ' 秒');
-    return (
-      '<div class="prep-card skill-pick' + (picked ? ' picked' : '') + '" data-s="' + id + '">' +
-      '<div class="prep-card-head"><b>' + d.name + '</b><span>' +
-      (picked ? slotKeys[slot] : '未装配') +
-      '</span></div>' +
-      '<p class="prep-desc">' + desc + '</p>' +
-      '<div class="prep-detail">' + detail + '<div class="prep-tags"><i>技能</i></div></div>' +
-      '</div>'
-    );
-  }).join('');
+  const pool = ALL_SKILLS.filter((id) => !selectedSkills.includes(id));
 
-  // 点选：最多 3 个；满了再点新的，换掉最早选的那个
-  list.querySelectorAll('.prep-card.skill-pick').forEach((el) => {
+  const slots = selectedSkills
+    .map((id, i) => {
+      const cls = 'in-slot' + (i === activeSlot ? ' active-slot' : '');
+      return '<div class="skill-slot" data-slot="' + i + '">' +
+        '<div class="skill-slot-key">' + slotKeys[i] + '</div>' +
+        skillCardHtml(id, cls, 'Q/E/F'.split('/')[i] + ' 槽') +
+        '</div>';
+    })
+    .join('');
+
+  const poolHtml = pool.length
+    ? pool.map((id) => skillCardHtml(id, 'in-pool', '拖到槽位')).join('')
+    : '<div class="skill-pool-empty">所有技能都已装配（拖回这里可以卸下）</div>';
+
+  list.innerHTML =
+    '<div class="skill-slots">' + slots + '</div>' +
+    '<div class="skill-pool" data-slot="pool">' + poolHtml + '</div>';
+
+  const rerender = () => {
+    saveSkills();
+    renderPrep();
+  };
+
+  // 拖拽：池子 → 槽位（替换）、槽位 → 槽位（交换）、槽位 → 池子（空出来）
+  list.querySelectorAll<HTMLElement>('[data-s]').forEach((el) => {
+    el.addEventListener('dragstart', (ev) => {
+      const id = el.dataset.s!;
+      const from = selectedSkills.indexOf(id);
+      ev.dataTransfer?.setData('text/plain', JSON.stringify({ id, from }));
+      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', () => el.classList.remove('dragging'));
+
+    // 点选兜底（触屏 / 懒得拖）：先点槽位选中，再点池子里的技能
     el.addEventListener('click', () => {
-      const id = (el as HTMLElement).dataset.s!;
+      const id = el.dataset.s!;
       const idx = selectedSkills.indexOf(id);
       if (idx >= 0) {
-        // 至少留一个
-        if (selectedSkills.length > 1) selectedSkills.splice(idx, 1);
-      } else {
-        if (selectedSkills.length >= 3) selectedSkills.shift();
-        selectedSkills.push(id);
+        activeSlot = idx;
+        renderPrep();
+        return;
       }
-      saveSkills();
-      renderPrep();
+      selectedSkills[activeSlot] = id;
+      rerender();
     });
   });
+
+  // 槽位放下
+  list.querySelectorAll<HTMLElement>('.skill-slot').forEach((zone) => {
+    const to = Number(zone.dataset.slot);
+    zone.addEventListener('dragover', (ev) => {
+      ev.preventDefault();
+      zone.classList.add('drop-hover');
+    });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drop-hover'));
+    zone.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      zone.classList.remove('drop-hover');
+      const raw = ev.dataTransfer?.getData('text/plain');
+      if (!raw) return;
+      const { id, from } = JSON.parse(raw) as { id: string; from: number };
+      if (from >= 0) {
+        // 槽位之间：交换
+        const tmp = selectedSkills[to];
+        selectedSkills[to] = id;
+        selectedSkills[from] = tmp;
+      } else {
+        selectedSkills[to] = id;
+      }
+      activeSlot = to;
+      rerender();
+    });
+  });
+
+  // 拖回技能池：把该槽位卸下（用一个未装配的技能补位，保持 3 个）
+  const poolZone = list.querySelector<HTMLElement>('.skill-pool');
+  if (poolZone) {
+    poolZone.addEventListener('dragover', (ev) => ev.preventDefault());
+    poolZone.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      const raw = ev.dataTransfer?.getData('text/plain');
+      if (!raw) return;
+      const { id, from } = JSON.parse(raw) as { id: string; from: number };
+      if (from < 0) return;
+      const spare = ALL_SKILLS.find((s) => !selectedSkills.includes(s));
+      if (spare) selectedSkills[from] = spare;
+      else void id;
+      rerender();
+    });
+  }
 }
 
 renderPrep();
